@@ -1,0 +1,203 @@
+version: '3.8'
+
+services:
+  # API Gateway
+  api-gateway:
+    build: ./services/api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      - redis
+      - rabbitmq
+    networks:
+      - horiens-network
+    restart: unless-stopped
+
+  # Purchase Service
+  purchase-service:
+    build: ./services/purchase-service
+    environment:
+      - DATABASE_URL=postgresql://horiens:horiens_pass@postgres:5432/horiens_db
+      - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - MOYSKLAD_API_TOKEN=${MOYSKLAD_API_TOKEN}
+      - MOYSKLAD_BASE_URL=${MOYSKLAD_BASE_URL}
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - horiens-network
+    restart: unless-stopped
+
+  # ML Service
+  ml-service:
+    build: ./services/ml-service
+    environment:
+      - DATABASE_URL=postgresql://horiens:horiens_pass@postgres:5432/horiens_db
+      - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - horiens-network
+    restart: unless-stopped
+    volumes:
+      - ml-models:/app/models
+
+  # MoySklad Service
+  moysklad-service:
+    build: ./services/moysklad-service
+    environment:
+      - DATABASE_URL=postgresql://horiens:horiens_pass@postgres:5432/horiens_db
+      - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - MOYSKLAD_API_TOKEN=${MOYSKLAD_API_TOKEN}
+      - MOYSKLAD_BASE_URL=${MOYSKLAD_BASE_URL}
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - horiens-network
+    restart: unless-stopped
+
+  # Notification Service
+  notification-service:
+    build: ./services/notification-service
+    environment:
+      - DATABASE_URL=postgresql://horiens:horiens_pass@postgres:5432/horiens_db
+      - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - horiens-network
+    restart: unless-stopped
+
+  # Analytics Service
+  analytics-service:
+    build: ./services/analytics-service
+    environment:
+      - DATABASE_URL=postgresql://horiens:horiens_pass@postgres:5432/horiens_db
+      - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - horiens-network
+    restart: unless-stopped
+
+  # Nginx Load Balancer
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - api-gateway
+    networks:
+      - horiens-network
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=horiens_db
+      - POSTGRES_USER=horiens
+      - POSTGRES_PASSWORD=horiens_pass
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - horiens-network
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - horiens-network
+    restart: unless-stopped
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - horiens-network
+    restart: unless-stopped
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - horiens-network
+    restart: unless-stopped
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - horiens-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+  prometheus-data:
+  grafana-data:
+  ml-models:
+
+networks:
+  horiens-network:
+    driver: bridge 
