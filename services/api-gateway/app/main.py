@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
 import uvicorn
+from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.core.redis_client import get_redis_client

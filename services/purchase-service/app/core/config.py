@@ -35,7 +35,8 @@ class Settings(BaseSettings):
     app_name: str = "Horiens Purchase Agent"
     app_version: str = "1.0.0"
     debug: bool = False
-    log_level: str = "INFO"
+    # Logging
+    LOG_LEVEL: str = "INFO"
     
     # Caching
     cache_ttl: int = 300  # 5 minutes
