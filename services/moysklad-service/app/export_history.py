@@ -23,52 +23,54 @@ def daterange(start_date, end_date, step_days=30):
 # --- Экспорт продаж ---
 async def export_sales_history(start_date, end_date, filename):
     print(f"Экспорт продаж с {start_date} по {end_date}...")
-    async with httpx.AsyncClient() as client, open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
         writer = None
-        for period_start, period_end in daterange(start_date, end_date, step_days=90):
-            offset = 0
-            while True:
-                params = {
-                    "momentFrom": f"{period_start.strftime('%Y-%m-%d')}T00:00:00",
-                    "momentTo": f"{period_end.strftime('%Y-%m-%d')}T23:59:59",
-                    "offset": offset,
-                    "limit": 1000
-                }
-                resp = await client.get(f"{MOYSKLAD_API_URL}/entity/demand", headers=HEADERS, params=params, timeout=60.0)
-                resp.raise_for_status()
-                data = resp.json()
-                rows = data.get("rows", [])
-                if not rows:
-                    break
-                if writer is None and rows:
-                    # Записываем заголовки
-                    writer = csv.DictWriter(csvfile, fieldnames=rows[0].keys())
-                    writer.writeheader()
-                for row in rows:
-                    writer.writerow(row)
-                if len(rows) < 1000:
-                    break
-                offset += 1000
+        async with httpx.AsyncClient() as client:
+            for period_start, period_end in daterange(start_date, end_date, step_days=90):
+                offset = 0
+                while True:
+                    params = {
+                        "momentFrom": f"{period_start.strftime('%Y-%m-%d')}T00:00:00",
+                        "momentTo": f"{period_end.strftime('%Y-%m-%d')}T23:59:59",
+                        "offset": offset,
+                        "limit": 1000
+                    }
+                    resp = await client.get(f"{MOYSKLAD_API_URL}/entity/demand", headers=HEADERS, params=params, timeout=60.0)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    rows = data.get("rows", [])
+                    if not rows:
+                        break
+                    if writer is None and rows:
+                        # Записываем заголовки
+                        writer = csv.DictWriter(csvfile, fieldnames=rows[0].keys())
+                        writer.writeheader()
+                    for row in rows:
+                        writer.writerow(row)
+                    if len(rows) < 1000:
+                        break
+                    offset += 1000
     print(f"Продажи экспортированы в {filename}")
 
 # --- Экспорт остатков ---
 async def export_stock_history(date_points, filename):
     print(f"Экспорт остатков на даты: {[d.strftime('%Y-%m-%d') for d in date_points]}")
-    async with httpx.AsyncClient() as client, open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
         writer = None
-        for date in date_points:
-            params = {"moment": f"{date.strftime('%Y-%m-%d')}T23:59:59"}
-            resp = await client.get(f"{MOYSKLAD_API_URL}/report/stock/all", headers=HEADERS, params=params, timeout=60.0)
-            resp.raise_for_status()
-            data = resp.json()
-            rows = data.get("rows", [])
-            for row in rows:
-                row["date"] = date.strftime('%Y-%m-%d')
-            if writer is None and rows:
-                writer = csv.DictWriter(csvfile, fieldnames=list(rows[0].keys()))
-                writer.writeheader()
-            for row in rows:
-                writer.writerow(row)
+        async with httpx.AsyncClient() as client:
+            for date in date_points:
+                params = {"moment": f"{date.strftime('%Y-%m-%d')}T23:59:59"}
+                resp = await client.get(f"{MOYSKLAD_API_URL}/report/stock/all", headers=HEADERS, params=params, timeout=60.0)
+                resp.raise_for_status()
+                data = resp.json()
+                rows = data.get("rows", [])
+                for row in rows:
+                    row["date"] = date.strftime('%Y-%m-%d')
+                if writer is None and rows:
+                    writer = csv.DictWriter(csvfile, fieldnames=list(rows[0].keys()))
+                    writer.writeheader()
+                for row in rows:
+                    writer.writerow(row)
     print(f"Остатки экспортированы в {filename}")
 
 # --- Основная функция ---
