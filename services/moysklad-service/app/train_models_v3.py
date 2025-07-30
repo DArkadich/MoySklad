@@ -137,8 +137,12 @@ class PositionsBasedTrainer:
         logger.info(f"Извлечено {len(products)} уникальных товаров из остатков")
         # Показываем первые несколько кодов для отладки
         if products:
-            sample_codes = list(products.keys())[:5]
+            sample_codes = list(products.keys())[:10]
             logger.info(f"Примеры кодов товаров из остатков: {sample_codes}")
+            # Показываем полную информацию о первых 5 товарах
+            logger.info("Детальная информация о первых 5 товарах из остатков:")
+            for i, (code, info) in enumerate(list(products.items())[:5]):
+                logger.info(f"  {i+1}. Код: {code}, Название: {info['name']}, ID: {info['product_id']}")
         else:
             logger.warning("Не удалось извлечь товары из остатков!")
             logger.info(f"Колонки в stock_df: {list(stock_df.columns)}")
@@ -288,6 +292,28 @@ class PositionsBasedTrainer:
             sorted_unmatched = sorted(self._unmatched_codes.items(), key=lambda x: x[1], reverse=True)
             for code, count in sorted_unmatched[:10]:
                 logger.info(f"  {code}: {count} раз")
+        
+        # Показываем все найденные коды из продаж
+        if sales_by_product:
+            logger.info(f"Найденные коды из продаж: {list(sales_by_product.keys())}")
+        else:
+            logger.info("Не найдено ни одного кода из продаж в остатках!")
+            # Показываем все уникальные коды из продаж
+            all_codes_from_sales = set()
+            for _, row in sales_df.iterrows():
+                positions_data_str = row.get('positions_data', '')
+                if pd.notna(positions_data_str) and positions_data_str:
+                    try:
+                        positions_data = ast.literal_eval(positions_data_str)
+                        if isinstance(positions_data, list):
+                            for position in positions_data:
+                                assortment = position.get('assortment', {})
+                                product_code = self._extract_product_code_from_assortment(assortment)
+                                if product_code and product_code != "unknown":
+                                    all_codes_from_sales.add(str(product_code))
+                    except:
+                        pass
+            logger.info(f"Все уникальные коды из продаж: {sorted(list(all_codes_from_sales))}")
         
         return sales_by_product
     
