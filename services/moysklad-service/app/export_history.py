@@ -25,6 +25,7 @@ async def export_sales_history(start_date, end_date, filename):
     print(f"Экспорт продаж с {start_date} по {end_date}...")
     with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
         writer = None
+        fieldnames = set()
         async with httpx.AsyncClient() as client:
             for period_start, period_end in daterange(start_date, end_date, step_days=90):
                 offset = 0
@@ -41,12 +42,20 @@ async def export_sales_history(start_date, end_date, filename):
                     rows = data.get("rows", [])
                     if not rows:
                         break
-                    if writer is None and rows:
-                        # Записываем заголовки
-                        writer = csv.DictWriter(csvfile, fieldnames=rows[0].keys())
+                    
+                    # Собираем все возможные поля
+                    for row in rows:
+                        fieldnames.update(row.keys())
+                    
+                    if writer is None:
+                        # Записываем заголовки после сбора всех полей
+                        fieldnames_list = sorted(list(fieldnames))
+                        writer = csv.DictWriter(csvfile, fieldnames=fieldnames_list)
                         writer.writeheader()
+                    
                     for row in rows:
                         writer.writerow(row)
+                    
                     if len(rows) < 1000:
                         break
                     offset += 1000
@@ -57,6 +66,7 @@ async def export_stock_history(date_points, filename):
     print(f"Экспорт остатков на даты: {[d.strftime('%Y-%m-%d') for d in date_points]}")
     with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
         writer = None
+        fieldnames = set()
         async with httpx.AsyncClient() as client:
             for date in date_points:
                 params = {"moment": f"{date.strftime('%Y-%m-%d')}T23:59:59"}
@@ -64,11 +74,18 @@ async def export_stock_history(date_points, filename):
                 resp.raise_for_status()
                 data = resp.json()
                 rows = data.get("rows", [])
+                
+                # Добавляем дату к каждой строке
                 for row in rows:
                     row["date"] = date.strftime('%Y-%m-%d')
-                if writer is None and rows:
-                    writer = csv.DictWriter(csvfile, fieldnames=list(rows[0].keys()))
+                    fieldnames.update(row.keys())
+                
+                if writer is None:
+                    # Записываем заголовки после сбора всех полей
+                    fieldnames_list = sorted(list(fieldnames))
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames_list)
                     writer.writeheader()
+                
                 for row in rows:
                     writer.writerow(row)
     print(f"Остатки экспортированы в {filename}")
