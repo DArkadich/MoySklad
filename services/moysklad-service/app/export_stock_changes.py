@@ -56,10 +56,18 @@ async def export_stock_changes(start_date, end_date, filename):
                         "limit": 1000
                     }
                     
-                    resp = await client.get(f"{MOYSKLAD_API_URL}/report/stock/all", headers=HEADERS, params=params)
+                    # Используем отчет по остаткам с историческими данными
+                    resp = await client.get(f"{MOYSKLAD_API_URL}/report/stock/bystore", headers=HEADERS, params=params)
                     resp.raise_for_status()
                     data = resp.json()
                     stock_items = data.get("rows", [])
+                    
+                    if not stock_items:
+                        # Если нет данных, пробуем другой эндпоинт
+                        resp = await client.get(f"{MOYSKLAD_API_URL}/report/stock/all", headers=HEADERS, params=params)
+                        resp.raise_for_status()
+                        data = resp.json()
+                        stock_items = data.get("rows", [])
                     
                     if not stock_items:
                         print(f"Нет данных для {current_date.strftime('%Y-%m-%d')}")
