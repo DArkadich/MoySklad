@@ -188,8 +188,13 @@ class SimpleModelTrainer:
         products = sales_df['product_id'].unique()
         logger.info(f"Найдено {len(products)} уникальных продуктов")
         
+        # Выводим информацию о продуктах
+        for product_id in products:
+            logger.info(f"Продукт {product_id}: {len(sales_df[sales_df['product_id'] == product_id])} записей")
+        
         for product_id in products:
             if product_id == "unknown":
+                logger.info(f"Пропускаем продукт {product_id} (unknown)")
                 continue
                 
             # Данные продаж для продукта
