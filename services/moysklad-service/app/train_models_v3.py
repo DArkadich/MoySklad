@@ -22,6 +22,7 @@ class PositionsBasedTrainer:
     def __init__(self):
         self.models_dir = "/app/models"
         os.makedirs(self.models_dir, exist_ok=True)
+        self._unmatched_codes = {}  # Для отслеживания несовпадений
         
     def load_data(self):
         """Загрузка данных из CSV файлов"""
@@ -112,14 +113,19 @@ class PositionsBasedTrainer:
                     except:
                         pass
                 
-                # Используем код как ключ
-                products[code] = {
+                # Преобразуем код в строку для единообразия
+                code_str = str(code)
+                products[code_str] = {
                     'name': name,
                     'product_id': product_id,
-                    'code': code
+                    'code': code_str
                 }
         
         logger.info(f"Извлечено {len(products)} уникальных товаров из остатков")
+        # Показываем первые несколько кодов для отладки
+        if products:
+            sample_codes = list(products.keys())[:5]
+            logger.info(f"Примеры кодов товаров из остатков: {sample_codes}")
         return products
     
     def extract_sales_by_product(self, sales_df, products):
@@ -237,6 +243,10 @@ class PositionsBasedTrainer:
                                 if processed_rows < 3:
                                     logger.info(f"DEBUG: Не найден товар для code: {product_code_str}")
                                     logger.info(f"DEBUG: Доступные codes: {list(products.keys())[:5]}")
+                                # Добавляем статистику несовпадений
+                                if product_code_str not in self._unmatched_codes:
+                                    self._unmatched_codes[product_code_str] = 0
+                                self._unmatched_codes[product_code_str] += 1
                         else:
                             # Отладочная информация для неизвестных товаров
                             if processed_rows < 3:
@@ -250,6 +260,14 @@ class PositionsBasedTrainer:
             processed_rows += 1
         
         logger.info(f"Извлечено продаж для {len(sales_by_product)} товаров")
+        
+        # Показываем статистику несовпадений
+        if self._unmatched_codes:
+            logger.info(f"Несовпадения кодов (топ-10):")
+            sorted_unmatched = sorted(self._unmatched_codes.items(), key=lambda x: x[1], reverse=True)
+            for code, count in sorted_unmatched[:10]:
+                logger.info(f"  {code}: {count} раз")
+        
         return sales_by_product
     
     def _extract_product_code_from_assortment(self, assortment):
