@@ -48,17 +48,15 @@ async def export_sales_history(start_date, end_date, filename):
                         # Проверяем, есть ли новые поля
                         new_fields = set(row.keys()) - fieldnames
                         if new_fields:
+                            print(f"Добавляем новые поля: {new_fields}")
                             fieldnames.update(new_fields)
                             # Пересоздаем writer с новыми полями
                             fieldnames_list = sorted(list(fieldnames))
-                            if writer is None:
-                                writer = csv.DictWriter(csvfile, fieldnames=fieldnames_list)
-                                writer.writeheader()
-                            else:
-                                # Если writer уже создан, нужно пересоздать его
-                                # Это сложно, поэтому просто пропускаем строки с новыми полями
-                                print(f"Пропускаем строку с новыми полями: {new_fields}")
-                                continue
+                            writer = csv.DictWriter(csvfile, fieldnames=fieldnames_list)
+                            # Перезаписываем заголовки
+                            csvfile.seek(0)
+                            csvfile.truncate()
+                            writer.writeheader()
                         elif writer is None:
                             # Создаем writer в первый раз
                             fieldnames_list = sorted(list(fieldnames))
@@ -93,16 +91,15 @@ async def export_stock_history(date_points, filename):
                     # Проверяем, есть ли новые поля
                     new_fields = set(row.keys()) - fieldnames
                     if new_fields:
+                        print(f"Добавляем новые поля: {new_fields}")
                         fieldnames.update(new_fields)
                         # Пересоздаем writer с новыми полями
                         fieldnames_list = sorted(list(fieldnames))
-                        if writer is None:
-                            writer = csv.DictWriter(csvfile, fieldnames=fieldnames_list)
-                            writer.writeheader()
-                        else:
-                            # Если writer уже создан, пропускаем строки с новыми полями
-                            print(f"Пропускаем строку с новыми полями: {new_fields}")
-                            continue
+                        writer = csv.DictWriter(csvfile, fieldnames=fieldnames_list)
+                        # Перезаписываем заголовки
+                        csvfile.seek(0)
+                        csvfile.truncate()
+                        writer.writeheader()
                     elif writer is None:
                         # Создаем writer в первый раз
                         fieldnames_list = sorted(list(fieldnames))
