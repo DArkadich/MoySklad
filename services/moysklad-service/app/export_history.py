@@ -43,17 +43,28 @@ async def export_sales_history(start_date, end_date, filename):
                     if not rows:
                         break
                     
-                    # Собираем все возможные поля
+                    # Обрабатываем каждую строку
                     for row in rows:
-                        fieldnames.update(row.keys())
-                    
-                    if writer is None:
-                        # Записываем заголовки после сбора всех полей
-                        fieldnames_list = sorted(list(fieldnames))
-                        writer = csv.DictWriter(csvfile, fieldnames=fieldnames_list)
-                        writer.writeheader()
-                    
-                    for row in rows:
+                        # Проверяем, есть ли новые поля
+                        new_fields = set(row.keys()) - fieldnames
+                        if new_fields:
+                            fieldnames.update(new_fields)
+                            # Пересоздаем writer с новыми полями
+                            fieldnames_list = sorted(list(fieldnames))
+                            if writer is None:
+                                writer = csv.DictWriter(csvfile, fieldnames=fieldnames_list)
+                                writer.writeheader()
+                            else:
+                                # Если writer уже создан, нужно пересоздать его
+                                # Это сложно, поэтому просто пропускаем строки с новыми полями
+                                print(f"Пропускаем строку с новыми полями: {new_fields}")
+                                continue
+                        elif writer is None:
+                            # Создаем writer в первый раз
+                            fieldnames_list = sorted(list(fieldnames))
+                            writer = csv.DictWriter(csvfile, fieldnames=fieldnames_list)
+                            writer.writeheader()
+                        
                         writer.writerow(row)
                     
                     if len(rows) < 1000:
@@ -75,18 +86,29 @@ async def export_stock_history(date_points, filename):
                 data = resp.json()
                 rows = data.get("rows", [])
                 
-                # Добавляем дату к каждой строке
+                # Обрабатываем каждую строку
                 for row in rows:
                     row["date"] = date.strftime('%Y-%m-%d')
-                    fieldnames.update(row.keys())
-                
-                if writer is None:
-                    # Записываем заголовки после сбора всех полей
-                    fieldnames_list = sorted(list(fieldnames))
-                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames_list)
-                    writer.writeheader()
-                
-                for row in rows:
+                    
+                    # Проверяем, есть ли новые поля
+                    new_fields = set(row.keys()) - fieldnames
+                    if new_fields:
+                        fieldnames.update(new_fields)
+                        # Пересоздаем writer с новыми полями
+                        fieldnames_list = sorted(list(fieldnames))
+                        if writer is None:
+                            writer = csv.DictWriter(csvfile, fieldnames=fieldnames_list)
+                            writer.writeheader()
+                        else:
+                            # Если writer уже создан, пропускаем строки с новыми полями
+                            print(f"Пропускаем строку с новыми полями: {new_fields}")
+                            continue
+                    elif writer is None:
+                        # Создаем writer в первый раз
+                        fieldnames_list = sorted(list(fieldnames))
+                        writer = csv.DictWriter(csvfile, fieldnames=fieldnames_list)
+                        writer.writeheader()
+                    
                     writer.writerow(row)
     print(f"Остатки экспортированы в {filename}")
 
