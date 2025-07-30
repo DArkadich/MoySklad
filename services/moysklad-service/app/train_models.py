@@ -107,6 +107,12 @@ class SimpleModelTrainer:
         """Предобработка данных продаж"""
         logger.info("Предобработка данных продаж...")
         
+        # Выводим примеры данных для диагностики
+        logger.info(f"Примеры позиций (первые 3 записи):")
+        for i, row in df.head(3).iterrows():
+            positions = row.get('positions', 'N/A')
+            logger.info(f"  Запись {i}: positions = {str(positions)[:200]}...")
+        
         # Конвертируем даты
         df['moment'] = pd.to_datetime(df['moment'])
         df['date'] = df['moment'].dt.date
@@ -114,6 +120,11 @@ class SimpleModelTrainer:
         # Извлекаем информацию о продуктах
         df['product_id'] = df['positions'].apply(self._extract_product_id)
         df['quantity'] = df['positions'].apply(self._extract_quantity)
+        
+        # Выводим статистику извлечения
+        unknown_count = (df['product_id'] == "unknown").sum()
+        valid_count = len(df) - unknown_count
+        logger.info(f"Извлечено ID продуктов: валидных {valid_count}, unknown {unknown_count}")
         
         # Агрегируем по дням и продуктам
         daily_sales = df.groupby(['date', 'product_id']).agg({
@@ -154,9 +165,20 @@ class SimpleModelTrainer:
         try:
             positions = json.loads(positions_str)
             if positions and len(positions) > 0:
-                return positions[0].get('assortment', {}).get('meta', {}).get('href', '').split('/')[-1]
-        except:
-            pass
+                assortment = positions[0].get('assortment', {})
+                meta = assortment.get('meta', {})
+                href = meta.get('href', '')
+                if href:
+                    product_id = href.split('/')[-1]
+                    return product_id
+                else:
+                    # Попробуем другие поля
+                    if 'id' in assortment:
+                        return str(assortment['id'])
+                    elif 'name' in assortment:
+                        return assortment['name']
+        except Exception as e:
+            logger.debug(f"Ошибка извлечения ID продукта: {e}")
         return "unknown"
     
     def _extract_quantity(self, positions_str: str) -> float:
