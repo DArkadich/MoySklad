@@ -76,6 +76,19 @@ class PositionsBasedTrainer:
             logger.info(f"Загружено {len(sales_df)} записей продаж")
             logger.info(f"Загружено {len(stock_df)} записей остатков")
             
+            # Отладочная информация о структуре данных
+            if len(sales_df) > 0:
+                logger.info(f"Колонки продаж: {list(sales_df.columns)}")
+                logger.info(f"Первые 3 записи продаж:")
+                for i in range(min(3, len(sales_df))):
+                    logger.info(f"  Запись {i+1}: {dict(sales_df.iloc[i])}")
+            
+            if len(stock_df) > 0:
+                logger.info(f"Колонки остатков: {list(stock_df.columns)}")
+                logger.info(f"Первые 3 записи остатков:")
+                for i in range(min(3, len(stock_df))):
+                    logger.info(f"  Запись {i+1}: {dict(stock_df.iloc[i])}")
+            
             return sales_df, stock_df
             
         except Exception as e:
@@ -126,6 +139,14 @@ class PositionsBasedTrainer:
         if products:
             sample_codes = list(products.keys())[:5]
             logger.info(f"Примеры кодов товаров из остатков: {sample_codes}")
+        else:
+            logger.warning("Не удалось извлечь товары из остатков!")
+            logger.info(f"Колонки в stock_df: {list(stock_df.columns)}")
+            if len(stock_df) > 0:
+                logger.info(f"Первые 3 записи остатков:")
+                for i in range(min(3, len(stock_df))):
+                    row = stock_df.iloc[i]
+                    logger.info(f"  Запись {i+1}: code={row.get('code', 'НЕТ')}, name={row.get('name', 'НЕТ')}")
         return products
     
     def extract_sales_by_product(self, sales_df, products):
