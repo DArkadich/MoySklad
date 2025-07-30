@@ -42,7 +42,8 @@ async def export_sales_history(start_date, end_date, filename):
                             "momentFrom": f"{period_start.strftime('%Y-%m-%d')}T00:00:00",
                             "momentTo": f"{period_end.strftime('%Y-%m-%d')}T23:59:59",
                             "offset": offset,
-                            "limit": 1000
+                            "limit": 1000,
+                            "expand": "positions"  # Получаем полную информацию о позициях
                         }
                         resp = await client.get(f"{MOYSKLAD_API_URL}/entity/demand", headers=HEADERS, params=params)
                         resp.raise_for_status()

@@ -208,20 +208,36 @@ class SimpleModelTrainer:
                     logger.debug(f"Не удалось извлечь ID из href: {href}")
                     return "unknown"
             
-            # Если это массив позиций
+            # Если это массив позиций (полные данные)
             if isinstance(positions_data, list) and len(positions_data) > 0:
-                assortment = positions_data[0].get('assortment', {})
-                meta = assortment.get('meta', {})
-                href = meta.get('href', '')
-                if href:
-                    product_id = href.split('/')[-1]
-                    return product_id
-                else:
-                    # Попробуем другие поля
+                for position in positions_data:
+                    assortment = position.get('assortment', {})
+                    
+                    # Пробуем получить код продукта
+                    if 'code' in assortment:
+                        return assortment['code']
+                    
+                    # Пробуем получить ID продукта
                     if 'id' in assortment:
                         return str(assortment['id'])
-                    elif 'name' in assortment:
+                    
+                    # Пробуем получить ID из meta
+                    meta = assortment.get('meta', {})
+                    href = meta.get('href', '')
+                    if href and '/entity/product/' in href:
+                        product_id = href.split('/entity/product/')[1].split('/')[0]
+                        return product_id
+                    elif href and '/entity/service/' in href:
+                        service_id = href.split('/entity/service/')[1].split('/')[0]
+                        return f"service_{service_id}"
+                    
+                    # Пробуем получить название
+                    if 'name' in assortment:
                         return assortment['name']
+                
+                # Если ничего не нашли, используем ID первой позиции
+                if 'id' in positions_data[0]:
+                    return str(positions_data[0]['id'])
         except Exception as e:
             logger.debug(f"Ошибка извлечения ID продукта: {e}")
         return "unknown"
