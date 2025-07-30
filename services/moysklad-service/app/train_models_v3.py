@@ -211,18 +211,12 @@ class PositionsBasedTrainer:
                             logger.info(f"DEBUG: Позиция {i + 1}: assortment = {assortment}")
                             logger.info(f"DEBUG: Позиция {i + 1}: quantity = {quantity}")
                         
-                        # Извлекаем ID товара
-                        product_id = self._extract_product_id_from_assortment(assortment)
+                        # Извлекаем код товара
+                        product_code = self._extract_product_code_from_assortment(assortment)
                         
-                        if product_id and product_id != "unknown":
-                            # Ищем товар по ID в словаре продуктов
-                            product_code = None
-                            for code, product_info in products.items():
-                                if product_info.get('product_id') == product_id:
-                                    product_code = code
-                                    break
-                            
-                            if product_code:
+                        if product_code and product_code != "unknown":
+                            # Проверяем, есть ли такой код в словаре продуктов
+                            if product_code in products:
                                 if product_code not in sales_by_product:
                                     sales_by_product[product_code] = []
                                 
@@ -239,12 +233,12 @@ class PositionsBasedTrainer:
                             else:
                                 # Отладочная информация для несовпадений
                                 if processed_rows < 3:
-                                    logger.info(f"DEBUG: Не найден товар для product_id: {product_id}")
-                                    logger.info(f"DEBUG: Доступные product_ids: {list(products.keys())[:5]}")
+                                    logger.info(f"DEBUG: Не найден товар для code: {product_code}")
+                                    logger.info(f"DEBUG: Доступные codes: {list(products.keys())[:5]}")
                         else:
                             # Отладочная информация для неизвестных товаров
                             if processed_rows < 3:
-                                logger.info(f"DEBUG: Не удалось извлечь product_id из assortment")
+                                logger.info(f"DEBUG: Не удалось извлечь code из assortment")
                 
                 except Exception as e:
                     logger.debug(f"Ошибка парсинга positions_data: {e}")
@@ -256,16 +250,23 @@ class PositionsBasedTrainer:
         logger.info(f"Извлечено продаж для {len(sales_by_product)} товаров")
         return sales_by_product
     
-    def _extract_product_id_from_assortment(self, assortment):
-        """Извлечение ID товара из данных assortment"""
+    def _extract_product_code_from_assortment(self, assortment):
+        """Извлечение кода товара из данных assortment"""
         try:
-            # Проверяем meta.href
+            # Проверяем code напрямую
+            if 'code' in assortment:
+                code = assortment['code']
+                logger.info(f"DEBUG: Извлечен code: {code}")
+                return code
+            
+            # Проверяем meta.href для извлечения ID товара
             meta = assortment.get('meta', {})
             href = meta.get('href', '')
             
             if href and '/entity/product/' in href:
                 product_id = href.split('/entity/product/')[1].split('/')[0]
                 logger.info(f"DEBUG: Извлечен product_id из href: {product_id}")
+                # Здесь можно добавить логику для получения code по product_id
                 return product_id
             elif href and '/entity/service/' in href:
                 service_id = href.split('/entity/service/')[1].split('/')[0]
@@ -278,17 +279,11 @@ class PositionsBasedTrainer:
                 logger.info(f"DEBUG: Извлечен product_id из id: {product_id}")
                 return product_id
             
-            # Проверяем code
-            if 'code' in assortment:
-                code = assortment['code']
-                logger.info(f"DEBUG: Извлечен code: {code}")
-                return code
-            
             # Отладочная информация
-            logger.info(f"DEBUG: Не удалось извлечь product_id из assortment: {assortment}")
+            logger.info(f"DEBUG: Не удалось извлечь code из assortment: {assortment}")
             
         except Exception as e:
-            logger.info(f"Ошибка извлечения ID товара: {e}")
+            logger.info(f"Ошибка извлечения кода товара: {e}")
         
         return "unknown"
     
