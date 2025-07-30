@@ -216,15 +216,17 @@ class PositionsBasedTrainer:
                         
                         if product_code and product_code != "unknown":
                             # Проверяем, есть ли такой код в словаре продуктов
-                            if product_code in products:
-                                if product_code not in sales_by_product:
-                                    sales_by_product[product_code] = []
+                            # Преобразуем код в строку для сравнения
+                            product_code_str = str(product_code)
+                            if product_code_str in products:
+                                if product_code_str not in sales_by_product:
+                                    sales_by_product[product_code_str] = []
                                 
                                 # Парсим дату
                                 try:
                                     if pd.notna(moment):
                                         date = pd.to_datetime(moment).date()
-                                        sales_by_product[product_code].append({
+                                        sales_by_product[product_code_str].append({
                                             'date': date,
                                             'quantity': float(quantity) if pd.notna(quantity) else 0
                                         })
@@ -233,7 +235,7 @@ class PositionsBasedTrainer:
                             else:
                                 # Отладочная информация для несовпадений
                                 if processed_rows < 3:
-                                    logger.info(f"DEBUG: Не найден товар для code: {product_code}")
+                                    logger.info(f"DEBUG: Не найден товар для code: {product_code_str}")
                                     logger.info(f"DEBUG: Доступные codes: {list(products.keys())[:5]}")
                         else:
                             # Отладочная информация для неизвестных товаров
