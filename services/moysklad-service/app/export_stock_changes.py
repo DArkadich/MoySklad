@@ -88,34 +88,23 @@ async def export_stock_changes(start_date, end_date, filename):
                             inTransit = item.get('inTransit', 0)
                             stock = item.get('stock', 0)
                             
-                            # Извлекаем информацию о товаре из assortment
-                            product_code = ''
-                            product_name = ''
-                            product_id = ''
+                            # Извлекаем информацию о товаре из самой записи остатка
+                            product_code = item.get('code', '')
+                            product_name = item.get('name', '')
+                            product_id = item.get('id', '')
                             
-                            if assortment:
-                                # Проверяем разные возможные структуры
-                                if isinstance(assortment, dict):
-                                    product_code = assortment.get('code', '')
-                                    product_name = assortment.get('name', '')
-                                    product_id = assortment.get('id', '')
-                                elif isinstance(assortment, str):
-                                    # Если assortment - это строка с JSON
-                                    try:
-                                        assortment_data = json.loads(assortment)
-                                        product_code = assortment_data.get('code', '')
-                                        product_name = assortment_data.get('name', '')
-                                        product_id = assortment_data.get('id', '')
-                                    except:
-                                        pass
-                            
-                            # Если не удалось извлечь из assortment, пробуем другие поля
-                            if not product_code:
-                                product_code = item.get('code', '')
-                            if not product_name:
-                                product_name = item.get('name', '')
-                            if not product_id:
-                                product_id = item.get('id', '')
+                            # Если нет ID, пробуем извлечь из meta
+                            if not product_id and item.get('meta'):
+                                try:
+                                    meta_data = item.get('meta', {})
+                                    if isinstance(meta_data, dict) and 'href' in meta_data:
+                                        href = meta_data['href']
+                                        if '/entity/product/' in href:
+                                            product_id = href.split('/entity/product/')[1].split('/')[0]
+                                        elif '/entity/variant/' in href:
+                                            product_id = href.split('/entity/variant/')[1].split('/')[0]
+                                except:
+                                    pass
                             
                             # Создаем запись
                             record = {
