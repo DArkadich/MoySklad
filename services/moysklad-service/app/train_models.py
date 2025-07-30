@@ -13,7 +13,7 @@ import sys
 import json
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -175,6 +175,8 @@ class SimpleModelTrainer:
                 # Это мета-информация, нужно получить позиции через API
                 # Пока используем ID документа как временный идентификатор
                 href = positions_data['meta']['href']
+                logger.debug(f"Обрабатываем href: {href}")
+                
                 if '/entity/demand/' in href:
                     demand_id = href.split('/entity/demand/')[1].split('/')[0]
                     product_id = f"demand_{demand_id}"
