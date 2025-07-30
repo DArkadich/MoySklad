@@ -137,7 +137,6 @@ class StockBasedTrainer:
         for _, row in sales_df.iterrows():
             positions_str = row.get('positions', '')
             moment = row.get('moment', '')
-            quantity = row.get('quantity', 0)
             
             if pd.notna(positions_str) and positions_str:
                 # Извлекаем ID товара из positions
@@ -159,15 +158,39 @@ class StockBasedTrainer:
                         try:
                             if pd.notna(moment):
                                 date = pd.to_datetime(moment).date()
+                                # Извлекаем количество из positions
+                                quantity = self._extract_quantity_from_positions(positions_str)
                                 sales_by_product[product_code].append({
                                     'date': date,
-                                    'quantity': float(quantity) if pd.notna(quantity) else 0
+                                    'quantity': quantity
                                 })
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Ошибка обработки записи: {e}")
         
         logger.info(f"Извлечено продаж для {len(sales_by_product)} товаров")
         return sales_by_product
+    
+    def _extract_quantity_from_positions(self, positions_str):
+        """Извлечение количества из строки positions"""
+        try:
+            positions_str_fixed = positions_str.replace("'", '"')
+            positions_data = json.loads(positions_str_fixed)
+            
+            # Проверяем, является ли это мета-информацией о позициях
+            if 'meta' in positions_data and 'href' in positions_data['meta']:
+                # Это мета-информация, пока используем 1 как значение по умолчанию
+                return 1.0
+            
+            # Если это массив позиций
+            if isinstance(positions_data, list) and len(positions_data) > 0:
+                total_quantity = 0
+                for position in positions_data:
+                    quantity = position.get('quantity', 0)
+                    total_quantity += float(quantity)
+                return total_quantity
+        except:
+            pass
+        return 1.0  # Значение по умолчанию
     
     def _extract_product_id_from_positions(self, positions_str):
         """Извлечение ID товара из строки positions"""
@@ -205,9 +228,9 @@ class StockBasedTrainer:
         
         return "unknown"
     
-    def train_simple_models(self, sales_by_product):
-        """Обучение простых моделей"""
-        logger.info("Начинаем обучение простых моделей...")
+    def train_simple_models(self, sales_by_product, stock_df):
+        """Обучение простых моделей с учетом OoS дней"""
+        logger.info("Начинаем обучение простых моделей с учетом OoS дней...")
         
         successful_models = 0
         failed_models = 0
@@ -224,14 +247,46 @@ class StockBasedTrainer:
                 df['date'] = pd.to_datetime(df['date'])
                 df = df.sort_values('date')
                 
-                # Вычисляем среднее потребление
-                avg_consumption = df['quantity'].mean()
+                # Получаем данные остатков для этого товара
+                product_stock = stock_df[stock_df['code'] == product_code].copy()
+                if len(product_stock) > 0:
+                    product_stock['date'] = pd.to_datetime(product_stock['date'])
+                    
+                    # Фильтруем продажи, исключая дни с нулевым остатком (OoS)
+                    valid_sales = []
+                    for _, sale in df.iterrows():
+                        sale_date = sale['date']
+                        # Проверяем остаток на эту дату или ближайшую предыдущую
+                        stock_on_date = product_stock[product_stock['date'] <= sale_date]
+                        if len(stock_on_date) > 0:
+                            # Берем остаток на ближайшую дату
+                            latest_stock = stock_on_date.iloc[-1]
+                            if latest_stock['quantity'] > 0:  # Товар был в наличии
+                                valid_sales.append(sale)
+                    
+                    if len(valid_sales) >= 3:  # Минимум 3 валидные записи
+                        valid_df = pd.DataFrame(valid_sales)
+                        avg_consumption = valid_df['quantity'].mean()
+                        total_sales = len(valid_df)
+                        oos_filtered = len(df) - len(valid_df)
+                        
+                        logger.info(f"Товар {product_code}: {len(valid_df)} валидных продаж из {len(df)} (исключено {oos_filtered} OoS дней)")
+                    else:
+                        # Если мало валидных продаж, используем все данные
+                        avg_consumption = df['quantity'].mean()
+                        total_sales = len(df)
+                        logger.warning(f"Товар {product_code}: мало валидных продаж, используем все данные")
+                else:
+                    # Если нет данных об остатках, используем все продажи
+                    avg_consumption = df['quantity'].mean()
+                    total_sales = len(df)
+                    logger.warning(f"Товар {product_code}: нет данных об остатках")
                 
                 # Сохраняем модель
                 model_data = {
                     'product_code': product_code,
                     'avg_consumption': float(avg_consumption),
-                    'total_sales': len(df),
+                    'total_sales': total_sales,
                     'date_range': {
                         'start': df['date'].min().strftime('%Y-%m-%d'),
                         'end': df['date'].max().strftime('%Y-%m-%d')
@@ -269,7 +324,7 @@ class StockBasedTrainer:
         sales_by_product = self.extract_sales_by_product(sales_df, products)
         
         # Обучение моделей
-        successful, failed = self.train_simple_models(sales_by_product)
+        successful, failed = self.train_simple_models(sales_by_product, stock_df)
         
         logger.info(f"Обучение завершено! Успешно обучено моделей: {successful}, Ошибок: {failed}")
 

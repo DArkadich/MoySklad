@@ -42,7 +42,7 @@ async def export_sales_history(start_date, end_date, filename):
                             "momentFrom": f"{period_start.strftime('%Y-%m-%d')}T00:00:00",
                             "momentTo": f"{period_end.strftime('%Y-%m-%d')}T23:59:59",
                             "offset": offset,
-                            "limit": 20,  # Ограничиваем первыми 20 записями для тестирования
+                            "limit": 100,  # Увеличиваем лимит для получения больше данных
                             "expand": "positions.assortment"  # Получаем полную информацию о позициях и товарах
                         }
                         resp = await client.get(f"{MOYSKLAD_API_URL}/entity/demand", headers=HEADERS, params=params)
@@ -59,9 +59,9 @@ async def export_sales_history(start_date, end_date, filename):
                         
                         # Обрабатываем каждую строку
                         for row in rows:
-                            # Ограничиваем первыми 20 записями для тестирования
-                            if total_rows >= 20:
-                                print(f"Достигнут лимит в 20 записей. Остановка экспорта.")
+                            # Ограничиваем первыми 100 записями для тестирования
+                            if total_rows >= 100:
+                                print(f"Достигнут лимит в 100 записей. Остановка экспорта.")
                                 break
                             # Проверяем, есть ли новые поля
                             new_fields = set(row.keys()) - fieldnames
@@ -86,13 +86,13 @@ async def export_sales_history(start_date, end_date, filename):
                             period_rows += 1
                         
                         # Проверяем лимит после обработки записей
-                        if total_rows >= 20:
-                            print(f"Достигнут лимит в 20 записей. Остановка экспорта.")
+                        if total_rows >= 100:
+                            print(f"Достигнут лимит в 100 записей. Остановка экспорта.")
                             break
                         
-                        if len(rows) < 20:  # Изменено с 1000 на 20
+                        if len(rows) < 100:  # Изменено с 1000 на 100
                             break
-                        offset += 20  # Изменено с 1000 на 20
+                        offset += 100  # Изменено с 1000 на 100
                         
                         # Показываем прогресс каждые 1000 записей
                         if total_rows % 1000 == 0:
@@ -104,8 +104,8 @@ async def export_sales_history(start_date, end_date, filename):
                         break
                 
                 # Проверяем лимит после обработки всех записей периода
-                if total_rows >= 20:
-                    print(f"Достигнут лимит в 20 записей. Остановка экспорта.")
+                if total_rows >= 100:
+                    print(f"Достигнут лимит в 100 записей. Остановка экспорта.")
                     break
                 
                 print(f"Период завершен: {period_rows} записей")
