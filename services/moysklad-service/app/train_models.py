@@ -168,7 +168,29 @@ class SimpleModelTrainer:
     def _extract_product_id(self, positions_str: str) -> str:
         """Извлечение ID продукта из строки позиций"""
         try:
-            positions_data = json.loads(positions_str)
+            # Проверяем, что это строка
+            if not isinstance(positions_str, str):
+                logger.debug(f"positions_str не является строкой: {type(positions_str)}")
+                return "unknown"
+            
+            # Показываем первые символы для диагностики
+            logger.debug(f"positions_str начало: {positions_str[:100]}")
+            
+            # Пробуем разные способы парсинга
+            try:
+                positions_data = json.loads(positions_str)
+            except json.JSONDecodeError as e:
+                logger.debug(f"JSON парсинг не удался: {e}")
+                # Попробуем извлечь ID из строки напрямую
+                if '/entity/demand/' in positions_str:
+                    try:
+                        demand_id = positions_str.split('/entity/demand/')[1].split('/')[0]
+                        product_id = f"demand_{demand_id}"
+                        logger.debug(f"Извлечен ID продукта из строки: {product_id}")
+                        return product_id
+                    except:
+                        pass
+                return "unknown"
             
             # Проверяем, является ли это мета-информацией о позициях
             if 'meta' in positions_data and 'href' in positions_data['meta']:
