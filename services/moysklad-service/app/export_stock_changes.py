@@ -74,6 +74,13 @@ async def export_stock_changes(start_date, end_date, filename):
                                 print(f"Достигнут лимит в 1000 записей. Остановка экспорта.")
                                 break
                             
+                            # Отладочная информация для первых записей
+                            if total_rows < 3:
+                                print(f"DEBUG: Обрабатываем запись {total_rows + 1}")
+                                print(f"DEBUG: item keys: {list(item.keys())}")
+                                print(f"DEBUG: assortment type: {type(item.get('assortment'))}")
+                                print(f"DEBUG: assortment value: {item.get('assortment')}")
+                            
                             # Извлекаем основную информацию
                             assortment = item.get('assortment', {})
                             quantity = item.get('quantity', 0)
@@ -81,10 +88,34 @@ async def export_stock_changes(start_date, end_date, filename):
                             inTransit = item.get('inTransit', 0)
                             stock = item.get('stock', 0)
                             
-                            # Извлекаем информацию о товаре
-                            product_code = assortment.get('code', '')
-                            product_name = assortment.get('name', '')
-                            product_id = assortment.get('id', '')
+                            # Извлекаем информацию о товаре из assortment
+                            product_code = ''
+                            product_name = ''
+                            product_id = ''
+                            
+                            if assortment:
+                                # Проверяем разные возможные структуры
+                                if isinstance(assortment, dict):
+                                    product_code = assortment.get('code', '')
+                                    product_name = assortment.get('name', '')
+                                    product_id = assortment.get('id', '')
+                                elif isinstance(assortment, str):
+                                    # Если assortment - это строка с JSON
+                                    try:
+                                        assortment_data = json.loads(assortment)
+                                        product_code = assortment_data.get('code', '')
+                                        product_name = assortment_data.get('name', '')
+                                        product_id = assortment_data.get('id', '')
+                                    except:
+                                        pass
+                            
+                            # Если не удалось извлечь из assortment, пробуем другие поля
+                            if not product_code:
+                                product_code = item.get('code', '')
+                            if not product_name:
+                                product_name = item.get('name', '')
+                            if not product_id:
+                                product_id = item.get('id', '')
                             
                             # Создаем запись
                             record = {
@@ -97,7 +128,7 @@ async def export_stock_changes(start_date, end_date, filename):
                                 'inTransit': inTransit,
                                 'stock': stock,
                                 'available': stock - reserve,  # Доступно для продажи
-                                'meta': json.dumps(assortment.get('meta', {}), ensure_ascii=False)
+                                'meta': json.dumps(assortment if isinstance(assortment, dict) else {}, ensure_ascii=False)
                             }
                             
                             # Проверяем, есть ли новые поля
