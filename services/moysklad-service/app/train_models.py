@@ -210,34 +210,47 @@ class SimpleModelTrainer:
             
             # Если это массив позиций (полные данные)
             if isinstance(positions_data, list) and len(positions_data) > 0:
-                for position in positions_data:
+                logger.debug(f"Найдено {len(positions_data)} позиций")
+                for i, position in enumerate(positions_data):
+                    logger.debug(f"Позиция {i}: {position}")
                     assortment = position.get('assortment', {})
+                    logger.debug(f"Assortment {i}: {assortment}")
                     
                     # Пробуем получить код продукта
                     if 'code' in assortment:
-                        return assortment['code']
+                        code = assortment['code']
+                        logger.debug(f"Найден код продукта: {code}")
+                        return code
                     
                     # Пробуем получить ID продукта
                     if 'id' in assortment:
-                        return str(assortment['id'])
+                        product_id = str(assortment['id'])
+                        logger.debug(f"Найден ID продукта: {product_id}")
+                        return product_id
                     
                     # Пробуем получить ID из meta
                     meta = assortment.get('meta', {})
                     href = meta.get('href', '')
                     if href and '/entity/product/' in href:
                         product_id = href.split('/entity/product/')[1].split('/')[0]
+                        logger.debug(f"Найден ID продукта из href: {product_id}")
                         return product_id
                     elif href and '/entity/service/' in href:
                         service_id = href.split('/entity/service/')[1].split('/')[0]
+                        logger.debug(f"Найден ID услуги из href: {service_id}")
                         return f"service_{service_id}"
                     
                     # Пробуем получить название
                     if 'name' in assortment:
-                        return assortment['name']
+                        name = assortment['name']
+                        logger.debug(f"Найдено название: {name}")
+                        return name
                 
                 # Если ничего не нашли, используем ID первой позиции
                 if 'id' in positions_data[0]:
-                    return str(positions_data[0]['id'])
+                    pos_id = str(positions_data[0]['id'])
+                    logger.debug(f"Используем ID позиции: {pos_id}")
+                    return pos_id
         except Exception as e:
             logger.debug(f"Ошибка извлечения ID продукта: {e}")
         return "unknown"
