@@ -6,12 +6,21 @@ import shutil
 import os
 import asyncio
 import logging
+import sys
 from pathlib import Path
 
-from app.utils.logging_config import setup_logging
+# Добавляем путь к модулям
+sys.path.append('/app')
 
-# Настройка логирования
-setup_logging()
+try:
+    from app.utils.logging_config import setup_logging
+except ImportError:
+    # Fallback если модуль не найден
+    def setup_logging():
+        logging.basicConfig(level=logging.INFO)
+    
+    logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 
