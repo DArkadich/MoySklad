@@ -99,6 +99,11 @@ async def export_sales_history(start_date, end_date, filename):
                         print(f"Ошибка при запросе: {e}")
                         break
                 
+                # Проверяем лимит после обработки всех записей периода
+                if total_rows >= 20:
+                    print(f"Достигнут лимит в 20 записей. Остановка экспорта.")
+                    break
+                
                 print(f"Период завершен: {period_rows} записей")
                 
                 # Проверяем общее время выполнения

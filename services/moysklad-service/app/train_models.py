@@ -178,7 +178,9 @@ class SimpleModelTrainer:
             
             # Пробуем разные способы парсинга
             try:
-                positions_data = json.loads(positions_str)
+                # Сначала попробуем заменить одинарные кавычки на двойные
+                positions_str_fixed = positions_str.replace("'", '"')
+                positions_data = json.loads(positions_str_fixed)
             except json.JSONDecodeError as e:
                 logger.debug(f"JSON парсинг не удался: {e}")
                 # Попробуем извлечь ID из строки напрямую
