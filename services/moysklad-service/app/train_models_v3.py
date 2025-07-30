@@ -154,17 +154,36 @@ class PositionsBasedTrainer:
                         # Пробуем разные способы парсинга
                         try:
                             # Сначала пробуем ast.literal_eval для Python-подобных структур
+                            if processed_rows < 3:
+                                logger.info(f"DEBUG: Пробуем ast.literal_eval...")
                             positions_data = ast.literal_eval(positions_data_str)
-                        except:
+                            if processed_rows < 3:
+                                logger.info(f"DEBUG: ast.literal_eval успешно!")
+                        except Exception as e1:
+                            if processed_rows < 3:
+                                logger.info(f"DEBUG: ast.literal_eval не сработал: {e1}")
                             try:
                                 # Пробуем JSON с заменой кавычек
+                                if processed_rows < 3:
+                                    logger.info(f"DEBUG: Пробуем JSON с заменой кавычек...")
                                 positions_data = json.loads(positions_data_str.replace("'", '"'))
-                            except:
+                                if processed_rows < 3:
+                                    logger.info(f"DEBUG: JSON с заменой кавычек успешно!")
+                            except Exception as e2:
+                                if processed_rows < 3:
+                                    logger.info(f"DEBUG: JSON с заменой кавычек не сработал: {e2}")
                                 try:
                                     # Пробуем чистый JSON
+                                    if processed_rows < 3:
+                                        logger.info(f"DEBUG: Пробуем чистый JSON...")
                                     positions_data = json.loads(positions_data_str)
-                                except Exception as e:
-                                    logger.info(f"DEBUG: Ошибка парсинга данных: {e}")
+                                    if processed_rows < 3:
+                                        logger.info(f"DEBUG: Чистый JSON успешно!")
+                                except Exception as e3:
+                                    logger.info(f"DEBUG: Все методы парсинга не сработали:")
+                                    logger.info(f"DEBUG: - ast.literal_eval: {e1}")
+                                    logger.info(f"DEBUG: - JSON с заменой: {e2}")
+                                    logger.info(f"DEBUG: - Чистый JSON: {e3}")
                                     logger.info(f"DEBUG: Данные: {positions_data_str[:200]}...")
                                     continue
                     else:
