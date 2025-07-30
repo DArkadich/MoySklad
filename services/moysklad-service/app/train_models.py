@@ -163,9 +163,22 @@ class SimpleModelTrainer:
     def _extract_product_id(self, positions_str: str) -> str:
         """Извлечение ID продукта из строки позиций"""
         try:
-            positions = json.loads(positions_str)
-            if positions and len(positions) > 0:
-                assortment = positions[0].get('assortment', {})
+            positions_data = json.loads(positions_str)
+            
+            # Проверяем, является ли это мета-информацией о позициях
+            if 'meta' in positions_data and 'href' in positions_data['meta']:
+                # Это мета-информация, нужно получить позиции через API
+                # Пока используем ID документа как временный идентификатор
+                href = positions_data['meta']['href']
+                if '/entity/demand/' in href:
+                    demand_id = href.split('/entity/demand/')[1].split('/')[0]
+                    return f"demand_{demand_id}"
+                else:
+                    return "unknown"
+            
+            # Если это массив позиций
+            if isinstance(positions_data, list) and len(positions_data) > 0:
+                assortment = positions_data[0].get('assortment', {})
                 meta = assortment.get('meta', {})
                 href = meta.get('href', '')
                 if href:
@@ -184,9 +197,16 @@ class SimpleModelTrainer:
     def _extract_quantity(self, positions_str: str) -> float:
         """Извлечение количества из строки позиций"""
         try:
-            positions = json.loads(positions_str)
-            if positions and len(positions) > 0:
-                return float(positions[0].get('quantity', 0))
+            positions_data = json.loads(positions_str)
+            
+            # Проверяем, является ли это мета-информацией о позициях
+            if 'meta' in positions_data and 'href' in positions_data['meta']:
+                # Это мета-информация, пока используем 1 как значение по умолчанию
+                return 1.0
+            
+            # Если это массив позиций
+            if isinstance(positions_data, list) and len(positions_data) > 0:
+                return float(positions_data[0].get('quantity', 0))
         except:
             pass
         return 0.0
