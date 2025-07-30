@@ -31,6 +31,7 @@ class SimpleModelTrainer:
         
         # Возможные пути к файлам
         possible_sales_paths = [
+            "/app/data/sales_history.csv",
             "sales_history.csv",
             "/app/sales_history.csv",
             "/app/app/sales_history.csv",
@@ -39,6 +40,7 @@ class SimpleModelTrainer:
         ]
         
         possible_stock_paths = [
+            "/app/data/stock_history.csv",
             "stock_history.csv",
             "/app/stock_history.csv",
             "/app/app/stock_history.csv",

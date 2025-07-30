@@ -167,8 +167,8 @@ async def main():
     # Параметры экспорта
     start_date = datetime(2014, 1, 1)  # Начало истории
     end_date = datetime.now()
-    sales_csv = "sales_history.csv"
-    stock_csv = "stock_history.csv"
+    sales_csv = "/app/data/sales_history.csv"
+    stock_csv = "/app/data/stock_history.csv"
 
     print(f"Начинаем экспорт данных из МойСклад...")
     print(f"Период: {start_date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}")

@@ -66,6 +66,8 @@ services:
     networks:
       - horiens-network
     restart: unless-stopped
+    volumes:
+      - moysklad-data:/app/data
 
   # Notification Service
   notification-service:
@@ -197,6 +199,7 @@ volumes:
   prometheus-data:
   grafana-data:
   ml-models:
+  moysklad-data:
 
 networks:
   horiens-network:
