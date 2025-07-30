@@ -92,6 +92,28 @@ class StockBasedTrainer:
                 }
         
         logger.info(f"Извлечено данных о продажах для {len(sales_by_product)} товаров")
+        
+        # Отладочная информация
+        if len(sales_by_product) == 0:
+            logger.info("Не найдено продаж. Анализируем данные...")
+            
+            # Показываем примеры данных для первых товаров
+            for i, (product_code, group) in enumerate(products):
+                if i >= 3:  # Показываем только первые 3 товара
+                    break
+                    
+                logger.info(f"Товар {product_code}: {len(group)} записей")
+                if len(group) > 0:
+                    logger.info(f"  Первая запись: {dict(group.iloc[0])}")
+                    if len(group) > 1:
+                        logger.info(f"  Последняя запись: {dict(group.iloc[-1])}")
+                        
+                        # Показываем изменения между первой и последней записью
+                        first = group.iloc[0]
+                        last = group.iloc[-1]
+                        change = first['available'] - last['available']
+                        logger.info(f"  Изменение available: {first['available']} -> {last['available']} (разница: {change})")
+        
         return sales_by_product
     
     def _calculate_sales_from_stock_changes(self, group):
@@ -100,6 +122,10 @@ class StockBasedTrainer:
         
         # Сортируем по дате
         group = group.sort_values('date')
+        
+        # Если у нас только одна запись, продаж нет
+        if len(group) < 2:
+            return sales
         
         # Анализируем изменения между записями
         for i in range(1, len(group)):
