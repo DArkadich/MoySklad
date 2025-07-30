@@ -126,6 +126,11 @@ class SimpleModelTrainer:
         valid_count = len(df) - unknown_count
         logger.info(f"Извлечено ID продуктов: валидных {valid_count}, unknown {unknown_count}")
         
+        # Показываем примеры извлеченных ID
+        if valid_count > 0:
+            valid_ids = df[df['product_id'] != "unknown"]['product_id'].head(5).tolist()
+            logger.info(f"Примеры извлеченных ID: {valid_ids}")
+        
         # Агрегируем по дням и продуктам
         daily_sales = df.groupby(['date', 'product_id']).agg({
             'quantity': 'sum',
@@ -172,8 +177,11 @@ class SimpleModelTrainer:
                 href = positions_data['meta']['href']
                 if '/entity/demand/' in href:
                     demand_id = href.split('/entity/demand/')[1].split('/')[0]
-                    return f"demand_{demand_id}"
+                    product_id = f"demand_{demand_id}"
+                    logger.debug(f"Извлечен ID продукта: {product_id}")
+                    return product_id
                 else:
+                    logger.debug(f"Не удалось извлечь ID из href: {href}")
                     return "unknown"
             
             # Если это массив позиций
