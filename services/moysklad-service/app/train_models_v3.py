@@ -8,6 +8,7 @@ import numpy as np
 import json
 import logging
 import os
+import ast
 from datetime import datetime
 from pathlib import Path
 
@@ -152,23 +153,18 @@ class PositionsBasedTrainer:
                     if isinstance(positions_data_str, str):
                         # Пробуем разные способы парсинга
                         try:
-                            # Сначала пробуем как есть
-                            positions_data = json.loads(positions_data_str)
+                            # Сначала пробуем ast.literal_eval для Python-подобных структур
+                            positions_data = ast.literal_eval(positions_data_str)
                         except:
                             try:
-                                # Заменяем одинарные кавычки на двойные
+                                # Пробуем JSON с заменой кавычек
                                 positions_data = json.loads(positions_data_str.replace("'", '"'))
                             except:
                                 try:
-                                    # Убираем лишние символы
-                                    cleaned_str = positions_data_str.strip()
-                                    if cleaned_str.startswith('[') and cleaned_str.endswith(']'):
-                                        positions_data = json.loads(cleaned_str)
-                                    else:
-                                        logger.info(f"DEBUG: Не удалось распарсить JSON: {positions_data_str[:100]}...")
-                                        continue
+                                    # Пробуем чистый JSON
+                                    positions_data = json.loads(positions_data_str)
                                 except Exception as e:
-                                    logger.info(f"DEBUG: Ошибка парсинга JSON: {e}")
+                                    logger.info(f"DEBUG: Ошибка парсинга данных: {e}")
                                     logger.info(f"DEBUG: Данные: {positions_data_str[:200]}...")
                                     continue
                     else:
