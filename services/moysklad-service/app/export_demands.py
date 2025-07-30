@@ -53,7 +53,7 @@ async def export_demands(start_date, end_date, filename):
             params = {
                 "momentFrom": f"{start_date.strftime('%Y-%m-%d')}T00:00:00",
                 "momentTo": f"{end_date.strftime('%Y-%m-%d')}T23:59:59",
-                "limit": 1000  # Увеличиваем лимит документов
+                "limit": 10000  # Максимальный лимит документов
             }
             
             try:
@@ -65,9 +65,8 @@ async def export_demands(start_date, end_date, filename):
                 print(f"Найдено {len(demands)} документов продаж")
                 
                 for demand in demands:
-                    if total_rows >= 5000:  # Увеличиваем лимит для получения больше данных
-                        print(f"Достигнут лимит в 5000 записей. Остановка экспорта.")
-                        break
+                    # Убираем лимит - экспортируем все доступные данные
+                    pass
                     
                     demand_id = demand.get('id')
                     demand_date = demand.get('moment', '')
