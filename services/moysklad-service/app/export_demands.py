@@ -53,7 +53,7 @@ async def export_demands(start_date, end_date, filename):
             params = {
                 "momentFrom": f"{start_date.strftime('%Y-%m-%d')}T00:00:00",
                 "momentTo": f"{end_date.strftime('%Y-%m-%d')}T23:59:59",
-                "limit": 100
+                "limit": 1000  # Увеличиваем лимит документов
             }
             
             try:
@@ -65,8 +65,8 @@ async def export_demands(start_date, end_date, filename):
                 print(f"Найдено {len(demands)} документов продаж")
                 
                 for demand in demands:
-                    if total_rows >= 1000:  # Ограничиваем для тестирования
-                        print(f"Достигнут лимит в 1000 записей. Остановка экспорта.")
+                    if total_rows >= 5000:  # Увеличиваем лимит для получения больше данных
+                        print(f"Достигнут лимит в 5000 записей. Остановка экспорта.")
                         break
                     
                     demand_id = demand.get('id')
@@ -140,9 +140,9 @@ async def main():
     """Основная функция"""
     print("Начинаем экспорт документов продаж из МойСклад...")
     
-    # Период экспорта (последние 2 года)
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=730)
+    # Период экспорта (2021-2025 годы)
+    start_date = datetime(2021, 1, 1)
+    end_date = datetime(2025, 12, 31)
     
     print(f"Период: {start_date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}")
     
