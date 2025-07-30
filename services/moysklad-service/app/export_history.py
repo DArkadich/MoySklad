@@ -43,12 +43,16 @@ async def export_sales_history(start_date, end_date, filename):
                             "momentTo": f"{period_end.strftime('%Y-%m-%d')}T23:59:59",
                             "offset": offset,
                             "limit": 20,  # Ограничиваем первыми 20 записями для тестирования
-                            "expand": "positions"  # Получаем полную информацию о позициях
+                            "expand": "positions.assortment"  # Получаем полную информацию о позициях и товарах
                         }
                         resp = await client.get(f"{MOYSKLAD_API_URL}/entity/demand", headers=HEADERS, params=params)
                         resp.raise_for_status()
                         data = resp.json()
                         rows = data.get("rows", [])
+                        
+                        # Отладочная информация для первых записей
+                        if total_rows == 0 and rows:
+                            print(f"DEBUG: Первая запись positions: {str(rows[0].get('positions', 'НЕТ'))[:200]}...")
                         
                         if not rows:
                             break
