@@ -166,6 +166,13 @@ class StockBasedTrainer:
                                 })
                         except Exception as e:
                             logger.debug(f"Ошибка обработки записи: {e}")
+                else:
+                    # Отладочная информация для первых записей
+                    if len(sales_by_product) == 0:
+                        logger.info(f"DEBUG: Не удалось извлечь product_id из positions: {positions_str[:200]}...")
+                        logger.info(f"DEBUG: Извлеченный product_id: {product_id}")
+                        logger.info(f"DEBUG: Доступные product_ids в остатках: {list(products.keys())[:5]}")
+                        logger.info(f"DEBUG: Примеры product_info: {list(products.values())[:2]}")
         
         logger.info(f"Извлечено продаж для {len(sales_by_product)} товаров")
         return sales_by_product
@@ -202,11 +209,14 @@ class StockBasedTrainer:
             # Проверяем, является ли это мета-информацией
             if 'meta' in positions_data and 'href' in positions_data['meta']:
                 href = positions_data['meta']['href']
+                logger.debug(f"DEBUG: Обрабатываем href: {href}")
                 if '/entity/product/' in href:
                     product_id = href.split('/entity/product/')[1].split('/')[0]
+                    logger.debug(f"DEBUG: Извлечен product_id: {product_id}")
                     return product_id
                 elif '/entity/service/' in href:
                     service_id = href.split('/entity/service/')[1].split('/')[0]
+                    logger.debug(f"DEBUG: Извлечен service_id: {service_id}")
                     return f"service_{service_id}"
             
             # Если это массив позиций
@@ -218,9 +228,11 @@ class StockBasedTrainer:
                     
                     if href and '/entity/product/' in href:
                         product_id = href.split('/entity/product/')[1].split('/')[0]
+                        logger.debug(f"DEBUG: Извлечен product_id из позиции: {product_id}")
                         return product_id
                     elif href and '/entity/service/' in href:
                         service_id = href.split('/entity/service/')[1].split('/')[0]
+                        logger.debug(f"DEBUG: Извлечен service_id из позиции: {service_id}")
                         return f"service_{service_id}"
             
         except Exception as e:
@@ -252,7 +264,16 @@ class StockBasedTrainer:
                 if len(product_stock) > 0:
                     product_stock['date'] = pd.to_datetime(product_stock['date'])
                     
-                    # Фильтруем продажи, исключая дни с нулевым остатком (OoS)
+                    # Определяем критический остаток (когда товар "фактически" закончился)
+                    # Анализируем историю продаж для определения среднего потребления
+                    if len(df) >= 5:  # Нужно минимум 5 записей для анализа
+                        recent_sales = df.tail(10)  # Последние 10 продаж
+                        avg_recent_consumption = recent_sales['quantity'].mean()
+                        critical_stock = max(avg_recent_consumption * 0.5, 3)  # 50% от среднего или минимум 3 шт.
+                    else:
+                        critical_stock = 3  # По умолчанию критический остаток = 3 шт.
+                    
+                    # Фильтруем продажи, исключая дни с критическим остатком (OoS)
                     valid_sales = []
                     for _, sale in df.iterrows():
                         sale_date = sale['date']
@@ -261,7 +282,7 @@ class StockBasedTrainer:
                         if len(stock_on_date) > 0:
                             # Берем остаток на ближайшую дату
                             latest_stock = stock_on_date.iloc[-1]
-                            if latest_stock['quantity'] > 0:  # Товар был в наличии
+                            if latest_stock['quantity'] > critical_stock:  # Товар был в достаточном количестве
                                 valid_sales.append(sale)
                     
                     if len(valid_sales) >= 3:  # Минимум 3 валидные записи
@@ -270,7 +291,7 @@ class StockBasedTrainer:
                         total_sales = len(valid_df)
                         oos_filtered = len(df) - len(valid_df)
                         
-                        logger.info(f"Товар {product_code}: {len(valid_df)} валидных продаж из {len(df)} (исключено {oos_filtered} OoS дней)")
+                        logger.info(f"Товар {product_code}: {len(valid_df)} валидных продаж из {len(df)} (исключено {oos_filtered} OoS дней, критический остаток = {critical_stock:.1f})")
                     else:
                         # Если мало валидных продаж, используем все данные
                         avg_consumption = df['quantity'].mean()
