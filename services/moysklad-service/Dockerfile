@@ -14,6 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копирование кода приложения
 COPY app/ ./app/
 
+# Создание директории data и установка прав
+RUN mkdir -p /app/data
+
 # Создание пользователя для безопасности
 RUN useradd --create-home --shell /bin/bash appuser && chown -R appuser:appuser /app
 USER appuser

@@ -170,6 +170,10 @@ async def main():
     sales_csv = "/app/data/sales_history.csv"
     stock_csv = "/app/data/stock_history.csv"
 
+    # Создаем директорию data если её нет
+    import os
+    os.makedirs("/app/data", exist_ok=True)
+
     print(f"Начинаем экспорт данных из МойСклад...")
     print(f"Период: {start_date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}")
 
