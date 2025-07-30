@@ -42,7 +42,7 @@ async def export_sales_history(start_date, end_date, filename):
                             "momentFrom": f"{period_start.strftime('%Y-%m-%d')}T00:00:00",
                             "momentTo": f"{period_end.strftime('%Y-%m-%d')}T23:59:59",
                             "offset": offset,
-                            "limit": 1000,
+                            "limit": 20,  # Ограничиваем первыми 20 записями для тестирования
                             "expand": "positions"  # Получаем полную информацию о позициях
                         }
                         resp = await client.get(f"{MOYSKLAD_API_URL}/entity/demand", headers=HEADERS, params=params)
@@ -55,6 +55,10 @@ async def export_sales_history(start_date, end_date, filename):
                         
                         # Обрабатываем каждую строку
                         for row in rows:
+                            # Ограничиваем первыми 20 записями для тестирования
+                            if total_rows >= 20:
+                                print(f"Достигнут лимит в 20 записей. Остановка экспорта.")
+                                break
                             # Проверяем, есть ли новые поля
                             new_fields = set(row.keys()) - fieldnames
                             if new_fields:
@@ -77,9 +81,14 @@ async def export_sales_history(start_date, end_date, filename):
                             total_rows += 1
                             period_rows += 1
                         
-                        if len(rows) < 1000:
+                        # Проверяем лимит после обработки записей
+                        if total_rows >= 20:
+                            print(f"Достигнут лимит в 20 записей. Остановка экспорта.")
                             break
-                        offset += 1000
+                        
+                        if len(rows) < 20:  # Изменено с 1000 на 20
+                            break
+                        offset += 20  # Изменено с 1000 на 20
                         
                         # Показываем прогресс каждые 1000 записей
                         if total_rows % 1000 == 0:
