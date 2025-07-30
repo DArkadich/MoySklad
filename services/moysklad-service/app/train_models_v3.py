@@ -140,19 +140,51 @@ class PositionsBasedTrainer:
             
             if pd.notna(positions_data_str) and positions_data_str:
                 try:
-                    # Парсим данные позиций
-                    if isinstance(positions_data_str, str):
-                        positions_data = json.loads(positions_data_str.replace("'", '"'))
-                    else:
-                        positions_data = positions_data_str
-                    
                     # Отладочная информация для первых записей
                     if processed_rows < 3:
                         logger.info(f"DEBUG: Обрабатываем запись {processed_rows + 1}")
                         logger.info(f"DEBUG: positions_data_str тип: {type(positions_data_str)}")
                         logger.info(f"DEBUG: positions_data_str длина: {len(str(positions_data_str))}")
+                        logger.info(f"DEBUG: positions_data_str начало: {str(positions_data_str)[:200]}...")
+                    
+                    # Парсим данные позиций
+                    positions_data = None
+                    if isinstance(positions_data_str, str):
+                        # Пробуем разные способы парсинга
+                        try:
+                            # Сначала пробуем как есть
+                            positions_data = json.loads(positions_data_str)
+                        except:
+                            try:
+                                # Заменяем одинарные кавычки на двойные
+                                positions_data = json.loads(positions_data_str.replace("'", '"'))
+                            except:
+                                try:
+                                    # Убираем лишние символы
+                                    cleaned_str = positions_data_str.strip()
+                                    if cleaned_str.startswith('[') and cleaned_str.endswith(']'):
+                                        positions_data = json.loads(cleaned_str)
+                                    else:
+                                        logger.info(f"DEBUG: Не удалось распарсить JSON: {positions_data_str[:100]}...")
+                                        continue
+                                except Exception as e:
+                                    logger.info(f"DEBUG: Ошибка парсинга JSON: {e}")
+                                    logger.info(f"DEBUG: Данные: {positions_data_str[:200]}...")
+                                    continue
+                    else:
+                        positions_data = positions_data_str
+                    
+                    # Проверяем, что получили список
+                    if not isinstance(positions_data, list):
+                        logger.info(f"DEBUG: positions_data не является списком: {type(positions_data)}")
+                        continue
+                    
+                    # Отладочная информация для первых записей
+                    if processed_rows < 3:
                         logger.info(f"DEBUG: positions_data тип: {type(positions_data)}")
-                        logger.info(f"DEBUG: positions_data длина: {len(positions_data) if isinstance(positions_data, list) else 'не список'}")
+                        logger.info(f"DEBUG: positions_data длина: {len(positions_data)}")
+                        if len(positions_data) > 0:
+                            logger.info(f"DEBUG: Первая позиция: {positions_data[0]}")
                     
                     # Обрабатываем каждую позицию
                     for i, position in enumerate(positions_data):
