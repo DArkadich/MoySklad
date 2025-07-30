@@ -9,12 +9,18 @@ import time
 import httpx
 from datetime import datetime, timedelta
 import os
-from app.core.config import settings
+import os
 
 # Настройки API
 MOYSKLAD_API_URL = "https://api.moysklad.ru/api/remap/1.2"
+
+# Получаем токен из переменной окружения
+MOYSKLAD_API_TOKEN = os.getenv('MOYSKLAD_API_TOKEN')
+if not MOYSKLAD_API_TOKEN:
+    raise ValueError("MOYSKLAD_API_TOKEN не установлен в переменных окружения")
+
 HEADERS = {
-    "Authorization": f"Bearer {settings.moysklad_api_token}",
+    "Authorization": f"Bearer {MOYSKLAD_API_TOKEN}",
     "Content-Type": "application/json"
 }
 
