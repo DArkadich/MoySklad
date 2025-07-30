@@ -263,8 +263,17 @@ class SimpleModelTrainer:
         logger.info(f"Найдено {len(products)} уникальных продуктов")
         
         # Выводим информацию о продуктах
+        product_stats = []
         for product_id in products:
-            logger.info(f"Продукт {product_id}: {len(sales_df[sales_df['product_id'] == product_id])} записей")
+            count = len(sales_df[sales_df['product_id'] == product_id])
+            product_stats.append((product_id, count))
+            logger.info(f"Продукт {product_id}: {count} записей")
+        
+        # Показываем топ-10 продуктов по количеству записей
+        product_stats.sort(key=lambda x: x[1], reverse=True)
+        logger.info(f"Топ-10 продуктов по количеству записей:")
+        for i, (product_id, count) in enumerate(product_stats[:10]):
+            logger.info(f"  {i+1}. {product_id}: {count} записей")
         
         for product_id in products:
             if product_id == "unknown":
@@ -274,7 +283,7 @@ class SimpleModelTrainer:
             # Данные продаж для продукта
             product_sales = sales_df[sales_df['product_id'] == product_id].copy()
             
-            if len(product_sales) < 30:  # Минимум 30 дней данных
+            if len(product_sales) < 5:  # Минимум 5 записей данных
                 logger.warning(f"Недостаточно данных для продукта {product_id}: {len(product_sales)} записей")
                 continue
             
