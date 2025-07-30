@@ -29,13 +29,58 @@ class SimpleModelTrainer:
         """Загрузка и предобработка данных"""
         logger.info("Загрузка данных из CSV файлов...")
         
+        # Возможные пути к файлам
+        possible_sales_paths = [
+            "sales_history.csv",
+            "/app/sales_history.csv",
+            "/app/app/sales_history.csv",
+            "../sales_history.csv",
+            "app/sales_history.csv"
+        ]
+        
+        possible_stock_paths = [
+            "stock_history.csv",
+            "/app/stock_history.csv",
+            "/app/app/stock_history.csv",
+            "../stock_history.csv",
+            "app/stock_history.csv"
+        ]
+        
+        # Ищем файлы продаж
+        sales_file = None
+        for path in possible_sales_paths:
+            if os.path.exists(path):
+                sales_file = path
+                logger.info(f"Найден файл продаж: {path}")
+                break
+        
+        # Ищем файлы остатков
+        stock_file = None
+        for path in possible_stock_paths:
+            if os.path.exists(path):
+                stock_file = path
+                logger.info(f"Найден файл остатков: {path}")
+                break
+        
+        if not sales_file:
+            logger.error("Файл продаж не найден ни в одном из мест:")
+            for path in possible_sales_paths:
+                logger.error(f"  - {path}")
+            raise FileNotFoundError("sales_history.csv не найден")
+        
+        if not stock_file:
+            logger.error("Файл остатков не найден ни в одном из мест:")
+            for path in possible_stock_paths:
+                logger.error(f"  - {path}")
+            raise FileNotFoundError("stock_history.csv не найден")
+        
         try:
             # Загружаем данные продаж
-            sales_df = pd.read_csv(self.sales_file)
+            sales_df = pd.read_csv(sales_file)
             logger.info(f"Загружено {len(sales_df)} записей продаж")
             
             # Загружаем данные остатков
-            stock_df = pd.read_csv(self.stock_file)
+            stock_df = pd.read_csv(stock_file)
             logger.info(f"Загружено {len(stock_df)} записей остатков")
             
             # Предобработка данных продаж
