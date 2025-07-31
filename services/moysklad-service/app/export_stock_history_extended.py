@@ -3,6 +3,12 @@
 Экспорт исторических остатков через расширенный отчет об остатках
 Использует фильтр moment для получения остатков на конкретную дату
 Документация: https://dev.moysklad.ru/doc/api/remap/1.2/reports/#otchety-otchet-ostatki-rasshirennyj-otchet-ob-ostatkah
+
+ВАЖНО: Добавлены задержки для избежания блокировки API
+- Максимум 150 запросов в минуту (вместо 200)
+- Пауза 0.5 секунды между запросами
+- Пауза 2 секунды между днями
+- Обработка ошибок 429 и 403
 """
 
 import asyncio
@@ -27,6 +33,40 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
+# Настройки для избежания блокировки
+REQUEST_DELAY = 0.5  # секунды между запросами
+DAY_DELAY = 2.0      # секунды между днями
+MAX_REQUESTS_PER_MINUTE = 150  # максимум запросов в минуту
+
+class RateLimiter:
+    """Ограничитель частоты запросов"""
+    
+    def __init__(self, max_requests_per_minute: int):
+        self.max_requests = max_requests_per_minute
+        self.requests = []
+    
+    async def wait_if_needed(self):
+        """Ждет если нужно ограничить частоту"""
+        now = datetime.now()
+        
+        # Удаляем запросы старше 1 минуты
+        self.requests = [req_time for req_time in self.requests 
+                        if (now - req_time).total_seconds() < 60]
+        
+        # Если достигли лимита, ждем
+        if len(self.requests) >= self.max_requests:
+            oldest_request = min(self.requests)
+            wait_time = 60 - (now - oldest_request).total_seconds()
+            if wait_time > 0:
+                print(f"Достигнут лимит запросов. Ждем {wait_time:.1f} секунд...")
+                await asyncio.sleep(wait_time)
+        
+        # Добавляем текущий запрос
+        self.requests.append(now)
+
+# Глобальный ограничитель
+rate_limiter = RateLimiter(MAX_REQUESTS_PER_MINUTE)
+
 def daterange(start_date: datetime, end_date: datetime, step_days: int = 30):
     """Генерирует диапазоны дат для экспорта"""
     current_date = start_date
@@ -35,10 +75,54 @@ def daterange(start_date: datetime, end_date: datetime, step_days: int = 30):
         yield current_date, period_end
         current_date = period_end
 
+async def make_api_request(client: httpx.AsyncClient, url: str, params: dict, max_retries: int = 3):
+    """Выполняет API запрос с обработкой ошибок и повторными попытками"""
+    
+    for attempt in range(max_retries):
+        try:
+            # Ждем если нужно ограничить частоту
+            await rate_limiter.wait_if_needed()
+            
+            # Выполняем запрос
+            resp = await client.get(url, headers=HEADERS, params=params)
+            
+            if resp.status_code == 200:
+                return resp
+            elif resp.status_code == 429:
+                # Too Many Requests - ждем дольше
+                wait_time = (attempt + 1) * 5  # 5, 10, 15 секунд
+                print(f"Ошибка 429 (Too Many Requests). Ждем {wait_time} секунд...")
+                await asyncio.sleep(wait_time)
+            elif resp.status_code == 403:
+                # Forbidden - возможно заблокирован
+                print(f"Ошибка 403 (Forbidden). Возможно API заблокирован.")
+                print(f"Ответ: {resp.text}")
+                return resp
+            else:
+                print(f"Ошибка {resp.status_code}: {resp.text}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)
+                else:
+                    return resp
+                    
+        except Exception as e:
+            print(f"Ошибка запроса: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+            else:
+                raise
+    
+    return None
+
 async def export_stock_history_extended(start_date: datetime, end_date: datetime, filename: str):
     """Экспортирует исторические остатки через расширенный отчет"""
     
     print(f"Экспорт остатков с {start_date} по {end_date}...")
+    print(f"Настройки ограничений:")
+    print(f"  - Задержка между запросами: {REQUEST_DELAY} сек")
+    print(f"  - Задержка между днями: {DAY_DELAY} сек")
+    print(f"  - Максимум запросов в минуту: {MAX_REQUESTS_PER_MINUTE}")
+    print()
     
     # Создаем файл и записываем заголовок
     with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
@@ -54,8 +138,8 @@ async def export_stock_history_extended(start_date: datetime, end_date: datetime
                 "limit": 100
             }
             
-            resp = await client.get(f"{MOYSKLAD_API_URL}/report/stock/all", headers=HEADERS, params=params)
-            if resp.status_code == 200:
+            resp = await make_api_request(client, f"{MOYSKLAD_API_URL}/report/stock/all", params)
+            if resp and resp.status_code == 200:
                 data = resp.json()
                 if data.get('rows'):
                     for row in data['rows']:
@@ -66,8 +150,7 @@ async def export_stock_history_extended(start_date: datetime, end_date: datetime
                     print("Нет данных для анализа структуры")
                     return
             else:
-                print(f"Ошибка при получении структуры: {resp.status_code}")
-                print(f"Ответ: {resp.text}")
+                print(f"Ошибка при получении структуры: {resp.status_code if resp else 'No response'}")
                 return
         
         # Создаем writer с собранными полями
@@ -98,65 +181,69 @@ async def export_stock_history_extended(start_date: datetime, end_date: datetime
                             "offset": offset
                         }
                         
-                        try:
-                            resp = await client.get(f"{MOYSKLAD_API_URL}/report/stock/all", headers=HEADERS, params=params)
+                        resp = await make_api_request(client, f"{MOYSKLAD_API_URL}/report/stock/all", params)
+                        
+                        if not resp:
+                            print(f"    Пропускаем дату {current_date.strftime('%Y-%m-%d')} из-за ошибок")
+                            break
+                        
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            rows = data.get('rows', [])
                             
-                            if resp.status_code == 200:
-                                data = resp.json()
-                                rows = data.get('rows', [])
-                                
-                                if not rows:
-                                    break
-                                
-                                # Добавляем дату к каждой записи
-                                for row in rows:
-                                    row['export_date'] = current_date.strftime('%Y-%m-%d')
-                                
-                                # Записываем в CSV
-                                for row in rows:
-                                    # Обрабатываем вложенные объекты
-                                    processed_row = {}
-                                    for key, value in row.items():
-                                        if isinstance(value, dict):
-                                            # Для вложенных объектов сохраняем как JSON строку
-                                            import json
-                                            processed_row[key] = json.dumps(value, ensure_ascii=False)
-                                        else:
-                                            processed_row[key] = value
-                                    
-                                    writer.writerow(processed_row)
-                                
-                                total_records += len(rows)
-                                print(f"    Получено записей: {len(rows)} (всего: {total_records})")
-                                
-                                # Проверяем, есть ли еще данные
-                                if len(rows) < limit:
-                                    break
-                                
-                                offset += limit
-                            else:
-                                print(f"    Ошибка {resp.status_code}: {resp.text}")
+                            if not rows:
                                 break
+                            
+                            # Добавляем дату к каждой записи
+                            for row in rows:
+                                row['export_date'] = current_date.strftime('%Y-%m-%d')
+                            
+                            # Записываем в CSV
+                            for row in rows:
+                                # Обрабатываем вложенные объекты
+                                processed_row = {}
+                                for key, value in row.items():
+                                    if isinstance(value, dict):
+                                        # Для вложенных объектов сохраняем как JSON строку
+                                        import json
+                                        processed_row[key] = json.dumps(value, ensure_ascii=False)
+                                    else:
+                                        processed_row[key] = value
                                 
-                        except Exception as e:
-                            print(f"    Ошибка при обработке даты {current_date.strftime('%Y-%m-%d')}: {e}")
+                                writer.writerow(processed_row)
+                            
+                            total_records += len(rows)
+                            print(f"    Получено записей: {len(rows)} (всего: {total_records})")
+                            
+                            # Проверяем, есть ли еще данные
+                            if len(rows) < limit:
+                                break
+                            
+                            offset += limit
+                            
+                            # Пауза между запросами
+                            await asyncio.sleep(REQUEST_DELAY)
+                        else:
+                            print(f"    Ошибка {resp.status_code}: {resp.text}")
                             break
                 
                 processed_dates += 1
                 current_date += timedelta(days=1)
                 
-                # Небольшая пауза между запросами
-                await asyncio.sleep(0.1)
+                # Пауза между днями
+                await asyncio.sleep(DAY_DELAY)
         
         print(f"Экспорт завершен! Обработано дат: {processed_dates}, записей: {total_records}")
 
 async def main():
     """Основная функция"""
     print("Начинаем экспорт исторических остатков через расширенный отчет...")
+    print("ВАЖНО: Добавлены ограничения для избежания блокировки API")
+    print()
     
-    # Период экспорта
-    start_date = datetime(2021, 1, 1)
-    end_date = datetime(2025, 7, 30)
+    # Период экспорта (уменьшаем для тестирования)
+    start_date = datetime(2024, 1, 1)  # Начинаем с 2024 года
+    end_date = datetime(2024, 3, 31)   # Только 3 месяца для теста
     
     # Файлы для экспорта
     stock_csv = "/app/data/stock_history_extended.csv"
