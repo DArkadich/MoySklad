@@ -34,8 +34,8 @@ HEADERS = {
 }
 
 # Настройки для избежания блокировки
-REQUEST_DELAY = 0.5  # секунды между запросами
-DAY_DELAY = 2.0      # секунды между днями
+REQUEST_DELAY = 0.1  # секунды между запросами (уменьшили с 0.5)
+DAY_DELAY = 0.5      # секунды между днями (уменьшили с 2.0)
 MAX_REQUESTS_PER_MINUTE = 150  # максимум запросов в минуту
 
 class RateLimiter:
@@ -90,7 +90,7 @@ async def make_api_request(client: httpx.AsyncClient, url: str, params: dict, ma
                 return resp
             elif resp.status_code == 429:
                 # Too Many Requests - ждем дольше
-                wait_time = (attempt + 1) * 5  # 5, 10, 15 секунд
+                wait_time = (attempt + 1) * 3  # 3, 6, 9 секунд (уменьшили)
                 print(f"Ошибка 429 (Too Many Requests). Ждем {wait_time} секунд...")
                 await asyncio.sleep(wait_time)
             elif resp.status_code == 403:
@@ -101,14 +101,14 @@ async def make_api_request(client: httpx.AsyncClient, url: str, params: dict, ma
             else:
                 print(f"Ошибка {resp.status_code}: {resp.text}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(1)  # уменьшили с 2
                 else:
                     return resp
                     
         except Exception as e:
             print(f"Ошибка запроса: {e}")
             if attempt < max_retries - 1:
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)  # уменьшили с 2
             else:
                 raise
     
@@ -241,9 +241,9 @@ async def main():
     print("ВАЖНО: Добавлены ограничения для избежания блокировки API")
     print()
     
-    # Период экспорта (уменьшаем для тестирования)
-    start_date = datetime(2024, 1, 1)  # Начинаем с 2024 года
-    end_date = datetime(2024, 3, 31)   # Только 3 месяца для теста
+    # Период экспорта (расширяем)
+    start_date = datetime(2021, 1, 1)  # Начинаем с 2021 года
+    end_date = datetime(2025, 7, 30)   # До текущего времени
     
     # Файлы для экспорта
     stock_csv = "/app/data/stock_history_extended.csv"
