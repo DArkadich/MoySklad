@@ -34,7 +34,7 @@ def load_consumption_data(filename: str) -> pd.DataFrame:
         
         # Добавляем признаки времени
         df['year'] = df['start_date'].dt.year
-        df['quarter'] = df['start_date'].dt.quarter
+        df['quarter'] = df['start_date'].apply(get_quarter)
         df['month'] = df['start_date'].dt.month
         
         # Фильтруем валидные записи
@@ -146,6 +146,10 @@ def save_models(models: Dict, results: Dict, filename: str):
     
     logger.info("Модели сохранены!")
 
+def get_quarter(date: datetime) -> int:
+    """Возвращает номер квартала для даты"""
+    return (date.month - 1) // 3 + 1
+
 def create_forecast_features(product_code: str, current_date: datetime) -> pd.DataFrame:
     """Создает признаки для прогнозирования"""
     logger.info(f"Создание признаков для прогноза товара {product_code} на {current_date}")
@@ -153,7 +157,7 @@ def create_forecast_features(product_code: str, current_date: datetime) -> pd.Da
     # Базовые признаки времени
     features = {
         'year': current_date.year,
-        'quarter': current_date.quarter,
+        'quarter': get_quarter(current_date),
         'month': current_date.month,
         'total_days': 90,  # Квартал
         'days_with_stock_above_3': 60,  # Предполагаем 2/3 дней с остатками
