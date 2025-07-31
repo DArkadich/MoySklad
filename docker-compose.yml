@@ -64,7 +64,7 @@ services:
       - rabbitmq
     networks:
       - moysklad-network
-    command: python app/api_forecast.py
+    command: python app/api_simple.py
 
   # API для прогнозирования
   forecast-api:
@@ -86,7 +86,7 @@ services:
       - redis
     networks:
       - moysklad-network
-    command: python app/api_forecast.py
+    command: python app/api_simple.py
 
   # Cron для ежедневной автоматизации
   automation-cron:
