@@ -35,10 +35,10 @@ chmod +x start_system_optimized.sh
 ### **4. Первоначальное обучение ML моделей**
 ```bash
 # Копируем скрипт обучения в контейнер
-docker cp train_initial_models.py forecast-api:/app/
+docker cp train_models_in_container.py forecast-api:/app/
 
 # Запускаем обучение в контейнере
-docker exec -it forecast-api python3 train_initial_models.py
+docker exec -it forecast-api python3 train_models_in_container.py
 ```
 
 ### **5. Проверка работы системы**
@@ -130,7 +130,7 @@ docker logs forecast-api
 docker exec -it forecast-api ls -la /app/data/models/
 
 # Перезапуск первоначального обучения
-docker exec -it forecast-api python3 train_initial_models.py
+docker exec -it forecast-api python3 train_models_in_container.py
 ```
 
 ### **Если нет исторических данных:**
