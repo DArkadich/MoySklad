@@ -24,8 +24,20 @@ def load_sales_data(filename: str) -> pd.DataFrame:
         df = pd.read_csv(filename)
         logger.info(f"Загружено {len(df)} записей продаж")
         
+        # Проверяем доступные поля
+        logger.info(f"Доступные поля в продажах: {list(df.columns)}")
+        
+        # Ищем поле с датой (может быть 'moment', 'created', 'updated' и т.д.)
+        date_columns = [col for col in df.columns if any(date_word in col.lower() for date_word in ['moment', 'created', 'updated', 'date'])]
+        if date_columns:
+            date_column = date_columns[0]
+            logger.info(f"Используем поле даты: {date_column}")
+        else:
+            logger.error("Не найдено поле с датой в продажах")
+            return pd.DataFrame()
+        
         # Конвертируем даты
-        df['moment'] = pd.to_datetime(df['moment'])
+        df[date_column] = pd.to_datetime(df[date_column])
         
         # Извлекаем product_code из positions_data_str
         df['product_code'] = df['positions_data_str'].apply(extract_product_code)
@@ -33,6 +45,9 @@ def load_sales_data(filename: str) -> pd.DataFrame:
         # Фильтруем записи с валидными кодами
         valid_sales = df[df['product_code'].notna() & (df['product_code'] != 'unknown')]
         logger.info(f"Валидных записей продаж: {len(valid_sales)}")
+        
+        # Сохраняем имя поля даты для использования в расчетах
+        valid_sales.attrs['date_column'] = date_column
         
         return valid_sales
         
@@ -47,6 +62,9 @@ def load_stock_data(filename: str) -> pd.DataFrame:
     try:
         df = pd.read_csv(filename)
         logger.info(f"Загружено {len(df)} записей остатков")
+        
+        # Проверяем доступные поля
+        logger.info(f"Доступные поля в остатках: {list(df.columns)}")
         
         # Конвертируем даты
         df['export_date'] = pd.to_datetime(df['export_date'])
@@ -98,18 +116,21 @@ def calculate_accurate_consumption(sales_df: pd.DataFrame, stock_df: pd.DataFram
     
     logger.info(f"Расчет потребления для товара {product_code} с {start_date} по {end_date}")
     
+    # Получаем имя поля даты из атрибутов DataFrame
+    date_column = sales_df.attrs.get('date_column', 'moment')
+    
     # Фильтруем продажи по товару и периоду
     product_sales = sales_df[
         (sales_df['product_code'] == product_code) & 
-        (sales_df['moment'] >= start_date) & 
-        (sales_df['moment'] <= end_date)
+        (sales_df[date_column] >= start_date) & 
+        (sales_df[date_column] <= end_date)
     ]
     
     # Фильтруем остатки по товару и периоду
     product_stock = stock_df[
         (stock_df['code'] == product_code) & 
         (stock_df['export_date'] >= start_date) & 
-        (product_stock['export_date'] <= end_date)
+        (stock_df['export_date'] <= end_date)
     ]
     
     # Общее количество дней в периоде
