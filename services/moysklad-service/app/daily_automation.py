@@ -182,6 +182,10 @@ class DailyAutomation:
         """Запускает ежедневную проверку"""
         logger.info("Запуск ежедневной автоматизации закупок...")
         
+        # Сначала обучаем/обновляем ML модели
+        logger.info("Обновление ML моделей...")
+        await self.update_ml_models()
+        
         # Получаем все товары
         products = await self.get_all_products()
         if not products:
@@ -219,6 +223,35 @@ class DailyAutomation:
         logger.info(f"Проверка завершена. Проверено товаров: {len(self.products_to_check)}")
         logger.info(f"Создано заказов: {len(self.orders_created)}")
         logger.info(f"Ошибок: {len(self.errors)}")
+    
+    async def update_ml_models(self):
+        """Обновляет ML модели на основе новых данных"""
+        logger.info("Обновление ML моделей...")
+        
+        try:
+            # Проверяем, есть ли уже обученные модели
+            models_dir = "/app/data/models"
+            existing_models = [f for f in os.listdir(models_dir) if f.endswith('.joblib')] if os.path.exists(models_dir) else []
+            
+            if existing_models:
+                # Если есть модели, используем дообучение
+                logger.info(f"Найдено {len(existing_models)} существующих моделей, используем дообучение")
+                from app.incremental_learning import IncrementalModelTrainer
+                
+                trainer = IncrementalModelTrainer()
+                await trainer.incremental_train_all_models()
+            else:
+                # Если моделей нет, обучаем на исторических данных
+                logger.info("Модели не найдены, обучаем на исторических данных")
+                from app.train_historical_models import HistoricalModelTrainer
+                
+                trainer = HistoricalModelTrainer()
+                await trainer.train_models_on_historical_data()
+            
+            logger.info("ML модели обновлены успешно")
+            
+        except Exception as e:
+            logger.error(f"Ошибка обновления ML моделей: {e}")
     
     async def save_results(self):
         """Сохраняет результаты проверки"""
