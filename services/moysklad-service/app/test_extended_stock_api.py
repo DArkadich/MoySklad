@@ -199,6 +199,7 @@ async def test_extended_stock_report():
 async def main():
     print("Тестирование расширенного отчета об остатках с фильтром moment...")
     print("ВАЖНО: Добавлены задержки для избежания блокировки API")
+    test_date = "2024-01-01"
     print(f"Тестовая дата: {test_date}")
     print(f"API URL: {MOYSKLAD_API_URL}")
     print("Документация: https://dev.moysklad.ru/doc/api/remap/1.2/reports/#otchety-otchet-ostatki-rasshirennyj-otchet-ob-ostatkah")
