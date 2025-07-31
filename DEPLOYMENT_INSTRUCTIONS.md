@@ -37,6 +37,9 @@ chmod +x start_system_optimized.sh
 # Копируем скрипт обучения в контейнер
 docker cp train_models_in_container.py forecast-api:/app/
 
+# Копируем исторические данные в контейнер
+docker cp data/production_stock_data.csv forecast-api:/app/data/
+
 # Запускаем обучение в контейнере
 docker exec -it forecast-api python3 train_models_in_container.py
 ```
@@ -129,38 +132,24 @@ docker logs forecast-api
 # Проверка наличия моделей
 docker exec -it forecast-api ls -la /app/data/models/
 
+# Проверка наличия исторических данных
+docker exec -it forecast-api ls -la /app/data/production_stock_data.csv
+
+# Копируем исторические данные если их нет
+docker cp data/production_stock_data.csv forecast-api:/app/data/
+
 # Перезапуск первоначального обучения
 docker exec -it forecast-api python3 train_models_in_container.py
 ```
 
 ### **Если нет исторических данных:**
 ```bash
-# Создание тестовых данных
-docker exec -it forecast-api python3 -c "
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
+# Исторические данные уже включены в репозиторий
+# Копируем их в контейнер:
+docker cp data/production_stock_data.csv forecast-api:/app/data/
 
-# Создаем тестовые данные
-dates = pd.date_range(start='2020-01-01', end='2024-01-01', freq='D')
-stock_data = pd.DataFrame({
-    'date': dates,
-    'product_code': '12345',
-    'stock': np.random.randint(50, 200, len(dates)),
-    'product_name': 'Тестовый товар'
-})
-sales_data = pd.DataFrame({
-    'date': dates,
-    'product_code': '12345',
-    'quantity': np.random.randint(0, 10, len(dates)),
-    'product_name': 'Тестовый товар'
-})
-
-# Сохраняем данные
-stock_data.to_csv('/app/data/stock_history.csv', index=False)
-sales_data.to_csv('/app/data/sales_history.csv', index=False)
-print('Тестовые данные созданы')
-"
+# Проверяем что данные скопировались:
+docker exec -it forecast-api ls -la /app/data/production_stock_data.csv
 ```
 
 ## 📊 Структура файлов после деплоя
