@@ -20,8 +20,8 @@ warnings.filterwarnings('ignore')
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.product_rules import ProductRules
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from product_rules import ProductRules
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -97,9 +97,9 @@ def create_demo_production_data():
     
     logger.info(f"Создано {len(all_products)} SKU")
     
-    # Генерируем ежедневные данные за 4 года
-    start_date = datetime(2020, 1, 1)
-    end_date = datetime(2024, 12, 31)
+    # Генерируем ежедневные данные за 1 год (для ускорения)
+    start_date = datetime(2023, 1, 1)
+    end_date = datetime(2023, 12, 31)
     date_range = pd.date_range(start_date, end_date, freq='D')
     
     all_data = []
