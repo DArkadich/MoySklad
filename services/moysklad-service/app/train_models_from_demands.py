@@ -108,37 +108,36 @@ class DemandsBasedTrainer:
                 
                 if days_span == 0:
                     continue
-                    
-                avg_consumption = total_quantity / days_span
+                
+                # Считаем количество дней с продажами (не 0)
+                days_with_sales = len([sale for sale in sales if sale['quantity'] > 0])
+                oos_days = len([sale for sale in sales if sale['quantity'] == 0])
+                
+                # Среднее потребление за день с продажами
+                if days_with_sales > 0:
+                    avg_consumption_per_sale_day = total_quantity / days_with_sales
+                else:
+                    avg_consumption_per_sale_day = 0
+                
+                # Среднее потребление за весь период (включая дни без продаж)
+                avg_consumption_per_total_day = total_quantity / days_span
+                
+                # Используем среднее потребление за день с продажами для планирования
+                avg_consumption = avg_consumption_per_sale_day
                 
                 # Определяем критический остаток (50% от среднего потребления, минимум 3)
                 critical_stock = max(3, avg_consumption * 0.5)
-                
-                # Исключаем дни с OoS (когда продажи были 0)
-                oos_days = 0
-                total_consumption_without_oos = 0
-                days_without_oos = 0
-                
-                for sale in sales:
-                    if sale['quantity'] > 0:
-                        total_consumption_without_oos += sale['quantity']
-                        days_without_oos += 1
-                    else:
-                        oos_days += 1
-                
-                if days_without_oos > 0:
-                    avg_consumption_without_oos = total_consumption_without_oos / days_without_oos
-                else:
-                    avg_consumption_without_oos = avg_consumption
                 
                 # Сохраняем модель
                 model_data = {
                     'product_code': product_code,
                     'product_name': data['name'],
-                    'avg_consumption': avg_consumption_without_oos,
+                    'avg_consumption': avg_consumption,
+                    'avg_consumption_per_total_day': avg_consumption_per_total_day,
                     'critical_stock': critical_stock,
                     'total_sales': total_quantity,
                     'sales_count': len(sales),
+                    'days_with_sales': days_with_sales,
                     'days_span': days_span,
                     'oos_days': oos_days,
                     'last_sale_date': sales[-1]['date'].isoformat(),
@@ -151,7 +150,7 @@ class DemandsBasedTrainer:
                 
                 trained_models += 1
                 logger.info(f"Обучена модель для {product_code} ({data['name']}): "
-                          f"среднее потребление {avg_consumption_without_oos:.2f}, "
+                          f"среднее потребление {avg_consumption:.2f} (за день с продажами), "
                           f"критический остаток {critical_stock:.1f}")
                 
             except Exception as e:
