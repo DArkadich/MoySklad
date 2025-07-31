@@ -32,8 +32,10 @@ def load_production_data():
     logger.info("Загрузка реальных данных с 86 SKU...")
     
     try:
-        # Путь к реальным данным (нужно будет заменить на реальный путь)
-        data_file = os.path.join(os.getcwd(), 'data', 'production_stock_data.csv')
+        # Путь к реальным данным (работает и в Docker, и локально)
+        data_file = os.path.join('/app', 'data', 'production_stock_data.csv')
+        if not os.path.exists(data_file):
+            data_file = os.path.join(os.getcwd(), 'data', 'production_stock_data.csv')
         
         # Если файл не существует, создаем демо-данные
         if not os.path.exists(data_file):
@@ -69,8 +71,10 @@ def create_demo_production_data():
     """Создает демо-данные для 86 SKU за 4 года"""
     logger.info("Создание демо-данных для 86 SKU...")
     
-    # Создаем папку data если её нет
-    data_dir = os.path.join(os.getcwd(), 'data')
+    # Создаем папку data если её нет (работает и в Docker, и локально)
+    data_dir = os.path.join('/app', 'data')
+    if not os.path.exists(data_dir):
+        data_dir = os.path.join(os.getcwd(), 'data')
     os.makedirs(data_dir, exist_ok=True)
     
     # Генерируем 86 SKU
@@ -291,8 +295,10 @@ def save_production_models_and_results(models, results, features):
     """Сохраняет модели и результаты"""
     logger.info("Сохранение моделей для продакшена...")
     
-    # Создаем папку data если её нет
-    data_dir = os.path.join(os.getcwd(), 'data')
+    # Создаем папку data если её нет (работает и в Docker, и локально)
+    data_dir = os.path.join('/app', 'data')
+    if not os.path.exists(data_dir):
+        data_dir = os.path.join(os.getcwd(), 'data')
     os.makedirs(data_dir, exist_ok=True)
     
     # Сохраняем модели
@@ -329,8 +335,10 @@ def test_production_forecast(models, results, features):
     """Тестирует модели на разных типах товаров"""
     logger.info("Тестирование моделей на разных типах товаров...")
     
-    # Загружаем данные для тестирования
-    data_file = os.path.join(os.getcwd(), 'data', 'production_stock_data.csv')
+    # Загружаем данные для тестирования (работает и в Docker, и локально)
+    data_file = os.path.join('/app', 'data', 'production_stock_data.csv')
+    if not os.path.exists(data_file):
+        data_file = os.path.join(os.getcwd(), 'data', 'production_stock_data.csv')
     df = pd.read_csv(data_file)
     
     # Выбираем товары разных типов для тестирования
