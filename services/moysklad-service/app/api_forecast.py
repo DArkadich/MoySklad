@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 API для прогнозирования спроса и автоматизации закупок
-Интеграция с универсальными ML-моделями и МойСклад
+Интеграция с производственными ML-моделями и правилами закупок
 """
 
 import asyncio
@@ -11,10 +11,13 @@ import numpy as np
 import logging
 import pickle
 import json
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
+from app.product_rules import ProductRules
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,16 +27,16 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="ML Forecast API", description="API для прогнозирования спроса и автоматизации закупок")
 
 # Модели для загрузки
-UNIVERSAL_MODELS_FILE = "/app/data/universal_forecast_models.pkl"
-CONSUMPTION_DATA_FILE = "/app/data/accurate_consumption_results.csv"
+PRODUCTION_MODELS_FILE = "/app/data/production_forecast_models.pkl"
+PRODUCTION_DATA_FILE = "/app/data/production_stock_data.csv"
 
 # Настройки API МойСклад
 MOYSKLAD_API_URL = "https://api.moysklad.ru/api/remap/1.2"
 MOYSKLAD_API_TOKEN = None  # Будет загружен из настроек
 
-# Универсальные модели ML
-universal_models = None
-consumption_data = None
+# Производственные модели ML
+production_models = None
+production_data = None
 
 class ForecastRequest(BaseModel):
     """Запрос на прогнозирование"""
@@ -48,9 +51,12 @@ class ForecastResponse(BaseModel):
     forecast_consumption: float
     days_until_oos: int
     recommended_order: float
+    final_order: int
     confidence: float
     models_used: List[str]
-    model_type: str = "universal"
+    model_type: str = "production"
+    product_info: Dict
+    order_validation: Dict
 
 class PurchaseOrder(BaseModel):
     """Заказ поставщику"""
@@ -59,117 +65,113 @@ class PurchaseOrder(BaseModel):
     total_amount: float
     delivery_date: str
 
-def load_universal_models():
-    """Загружает универсальные ML-модели"""
-    global universal_models, consumption_data
+def load_production_models():
+    """Загружает производственные ML-модели"""
+    global production_models, production_data
     
     try:
-        # Пытаемся загрузить универсальные модели
+        # Пытаемся загрузить производственные модели
         try:
-            with open(UNIVERSAL_MODELS_FILE, 'rb') as f:
+            model_file = os.path.join(os.getcwd(), 'data', 'production_forecast_models.pkl')
+            with open(model_file, 'rb') as f:
                 model_data = pickle.load(f)
-                universal_models = model_data['models']
-                logger.info(f"Загружены универсальные модели: {list(universal_models.keys())}")
+                production_models = model_data['models']
+                logger.info(f"Загружены производственные модели: {list(production_models.keys())}")
         except FileNotFoundError:
-            logger.warning("Универсальные модели не найдены, используем старые модели")
-            # Fallback к старым моделям
-            with open("/app/data/forecast_models.pkl", 'rb') as f:
+            logger.warning("Производственные модели не найдены, используем универсальные модели")
+            # Fallback к универсальным моделям
+            model_file = os.path.join(os.getcwd(), 'data', 'universal_forecast_models.pkl')
+            with open(model_file, 'rb') as f:
                 model_data = pickle.load(f)
-                universal_models = model_data['models']
-                logger.info(f"Загружены старые модели: {list(universal_models.keys())}")
+                production_models = model_data['models']
+                logger.info(f"Загружены универсальные модели: {list(production_models.keys())}")
         
         # Загружаем данные о потреблении
-        consumption_data = pd.read_csv(CONSUMPTION_DATA_FILE)
-        consumption_data['start_date'] = pd.to_datetime(consumption_data['start_date'])
-        
-        logger.info(f"Загружены данные о потреблении: {len(consumption_data)} записей")
+        data_file = os.path.join(os.getcwd(), 'data', 'production_stock_data.csv')
+        if os.path.exists(data_file):
+            production_data = pd.read_csv(data_file)
+            logger.info(f"Загружены производственные данные: {len(production_data)} записей")
+        else:
+            logger.warning("Производственные данные не найдены")
+            production_data = None
         
     except Exception as e:
         logger.error(f"Ошибка загрузки моделей: {e}")
         raise
 
-def get_quarter(date: datetime) -> int:
-    """Возвращает номер квартала для даты"""
-    return (date.month - 1) // 3 + 1
-
-def create_universal_features(product_code: str, current_date: datetime, 
-                            current_stock: float = None) -> pd.DataFrame:
-    """Создает универсальные признаки для любого товара"""
+def create_production_features(product_code: str, current_date: datetime, 
+                             current_stock: float = None) -> pd.DataFrame:
+    """Создает признаки для производственного прогнозирования"""
     
     # Получаем исторические данные для товара
-    product_history = consumption_data[consumption_data['product_code'] == product_code]
-    
-    if product_history.empty:
-        # Если нет истории, используем средние значения
-        avg_stock = 50
-        avg_sales = 10
-        sales_frequency = 0.3
-        product_code_numeric = float(product_code) if product_code.replace('.', '').isdigit() else 0
+    if production_data is not None:
+        product_history = production_data[production_data['product_code'] == product_code]
     else:
-        # Используем средние значения из истории
-        avg_stock = product_history['max_stock'].mean()
-        avg_sales = product_history['total_sales'].mean()
-        sales_frequency = product_history['days_with_sales'].sum() / product_history['total_days'].sum()
-        product_code_numeric = float(product_code) if product_code.replace('.', '').isdigit() else 0
+        product_history = pd.DataFrame()
+    
+    # Получаем информацию о товаре
+    product_info = ProductRules.get_product_info(product_code)
     
     # Базовые признаки времени
     features = {
         'year': current_date.year,
-        'quarter': get_quarter(current_date),
         'month': current_date.month,
-        'total_days': 90,  # Квартал
-        'days_with_stock_above_3': 60,  # Предполагаем 2/3 дней с остатками
-        'days_for_consumption': 30,  # 1/3 дней без остатков
-        'total_sales': avg_sales,
-        'days_with_sales': int(90 * sales_frequency),
-        'max_stock': avg_stock,
-        'min_stock': max(1, avg_stock * 0.1),
+        'day_of_year': current_date.timetuple().tm_yday,
+        'day_of_week': current_date.weekday(),
+        'is_month_start': current_date.day == 1,
+        'is_quarter_start': current_date.day == 1 and current_date.month in [1, 4, 7, 10]
     }
     
-    # Производные признаки
-    features['sales_per_day'] = features['total_sales'] / features['total_days']
-    features['stock_availability_ratio'] = features['days_with_stock_above_3'] / features['total_days']
-    features['sales_frequency'] = features['days_with_sales'] / features['total_days']
-    features['stock_range'] = features['max_stock'] - features['min_stock']
-    features['avg_stock'] = (features['max_stock'] + features['min_stock']) / 2
-    
-    # Универсальные признаки товара
-    features['product_code_numeric'] = product_code_numeric
-    features['product_category'] = product_code_numeric % 1000 if product_code_numeric > 0 else 0
-    features['product_group'] = product_code_numeric // 1000 if product_code_numeric > 0 else 0
+    # Добавляем признаки товара
+    features['product_code_numeric'] = float(product_code) if product_code.replace('.', '').isdigit() else 0
+    features['product_category'] = features['product_code_numeric'] % 1000
+    features['product_group'] = features['product_code_numeric'] // 1000
     
     # Статистики по товару (если есть история)
     if not product_history.empty:
-        features['total_sales_mean'] = product_history['total_sales'].mean()
-        features['total_sales_std'] = product_history['total_sales'].std()
-        features['max_stock_mean'] = product_history['max_stock'].mean()
-        features['max_stock_std'] = product_history['max_stock'].std()
-        features['sales_per_day_mean'] = product_history['sales_per_day'].mean()
-        features['sales_per_day_std'] = product_history['sales_per_day'].std()
+        features['daily_consumption_mean'] = product_history['daily_consumption'].mean()
+        features['daily_consumption_std'] = product_history['daily_consumption'].std()
+        features['daily_consumption_min'] = product_history['daily_consumption'].min()
+        features['daily_consumption_max'] = product_history['daily_consumption'].max()
+        features['current_stock_mean'] = product_history['current_stock'].mean()
+        features['current_stock_std'] = product_history['current_stock'].std()
+        features['current_stock_min'] = product_history['current_stock'].min()
+        features['current_stock_max'] = product_history['current_stock'].max()
     else:
-        # Используем общие средние значения
-        features['total_sales_mean'] = avg_sales
-        features['total_sales_std'] = avg_sales * 0.5
-        features['max_stock_mean'] = avg_stock
-        features['max_stock_std'] = avg_stock * 0.5
-        features['sales_per_day_mean'] = features['sales_per_day']
-        features['sales_per_day_std'] = features['sales_per_day'] * 0.5
+        # Используем базовые значения в зависимости от типа товара
+        if product_code.startswith('30'):  # Однодневные линзы
+            base_consumption = 100
+        elif product_code.startswith('6') or product_code.startswith('3'):  # Месячные линзы
+            base_consumption = 50
+        elif '360' in product_code or '500' in product_code or '120' in product_code:  # Растворы
+            base_consumption = 25
+        else:  # Прочие товары
+            base_consumption = 10
+        
+        features['daily_consumption_mean'] = base_consumption
+        features['daily_consumption_std'] = base_consumption * 0.3
+        features['daily_consumption_min'] = base_consumption * 0.5
+        features['daily_consumption_max'] = base_consumption * 1.5
+        features['current_stock_mean'] = base_consumption * 30
+        features['current_stock_std'] = base_consumption * 10
+        features['current_stock_min'] = base_consumption * 10
+        features['current_stock_max'] = base_consumption * 50
     
     return pd.DataFrame([features])
 
-def predict_consumption_universal(product_code: str, current_date: datetime, 
+def predict_consumption_production(product_code: str, current_date: datetime, 
                                  current_stock: float = None) -> Dict:
-    """Делает универсальный прогноз потребления для любого товара"""
+    """Делает производственный прогноз потребления для товара"""
     
-    if universal_models is None:
+    if production_models is None:
         raise HTTPException(status_code=500, detail="ML-модели не загружены")
     
-    # Создаем универсальные признаки для прогноза
-    features = create_universal_features(product_code, current_date, current_stock)
+    # Создаем признаки для прогноза
+    features = create_production_features(product_code, current_date, current_stock)
     
     # Делаем прогноз всеми моделями
     predictions = {}
-    for model_name, model in universal_models.items():
+    for model_name, model in production_models.items():
         try:
             if model_name == 'linear_regression':
                 # Для линейной регрессии нужна нормализация
@@ -254,10 +256,14 @@ async def create_purchase_order(product_code: str, quantity: float) -> PurchaseO
             
             product = data['rows'][0]
             
+            # Получаем правила товара
+            product_info = ProductRules.get_product_info(product_code)
+            lead_time_days = ProductRules.get_lead_time_days(product_code)
+            
             # Создаем заказ поставщику
             order_data = {
                 "name": f"Автозаказ {product_code}",
-                "description": f"Автоматический заказ на основе ML-прогноза",
+                "description": f"Автоматический заказ на основе ML-прогноза. {product_info['description']}",
                 "moment": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                 "organization": {
                     "meta": {
@@ -291,7 +297,7 @@ async def create_purchase_order(product_code: str, quantity: float) -> PurchaseO
                     supplier_id=order_info.get('id', ''),
                     items=[{"product_code": product_code, "quantity": quantity}],
                     total_amount=quantity * order_data['positions'][0]['price'],
-                    delivery_date=(datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')
+                    delivery_date=(datetime.now() + timedelta(days=lead_time_days)).strftime('%Y-%m-%d')
                 )
             else:
                 raise HTTPException(status_code=resp.status_code, 
@@ -305,12 +311,12 @@ async def create_purchase_order(product_code: str, quantity: float) -> PurchaseO
 async def startup_event():
     """Инициализация при запуске"""
     logger.info("Запуск API для прогнозирования...")
-    load_universal_models()
+    load_production_models()
 
 @app.get("/")
 async def root():
     """Корневой эндпоинт"""
-    return {"message": "ML Forecast API", "status": "running", "model_type": "universal"}
+    return {"message": "ML Forecast API", "status": "running", "model_type": "production"}
 
 @app.post("/forecast", response_model=ForecastResponse)
 async def forecast_demand(request: ForecastRequest):
@@ -320,8 +326,8 @@ async def forecast_demand(request: ForecastRequest):
         # Получаем текущие остатки
         current_stock = await get_current_stock(request.product_code)
         
-        # Делаем универсальный прогноз
-        forecast_result = predict_consumption_universal(
+        # Делаем производственный прогноз
+        forecast_result = predict_consumption_production(
             request.product_code, 
             datetime.now(), 
             current_stock
@@ -331,9 +337,20 @@ async def forecast_demand(request: ForecastRequest):
         daily_consumption = forecast_result['avg_consumption']
         days_until_oos = int(current_stock / daily_consumption) if daily_consumption > 0 else 999
         
+        # Получаем информацию о товаре
+        product_info = ProductRules.get_product_info(request.product_code)
+        
+        # Рассчитываем страховой запас
+        safety_stock = ProductRules.calculate_safety_stock(request.product_code, daily_consumption)
+        
         # Рассчитываем рекомендуемый заказ
-        safety_stock = max(3, daily_consumption * 7)  # 7 дней безопасности
         recommended_order = max(0, safety_stock - current_stock)
+        
+        # Применяем ограничения к заказу
+        final_order = ProductRules.apply_order_constraints(request.product_code, recommended_order)
+        
+        # Валидируем заказ
+        order_validation = ProductRules.validate_order(request.product_code, final_order)
         
         return ForecastResponse(
             product_code=request.product_code,
@@ -341,9 +358,12 @@ async def forecast_demand(request: ForecastRequest):
             forecast_consumption=daily_consumption,
             days_until_oos=days_until_oos,
             recommended_order=recommended_order,
+            final_order=final_order,
             confidence=forecast_result['confidence'],
             models_used=list(forecast_result['predictions'].keys()),
-            model_type="universal"
+            model_type="production",
+            product_info=product_info,
+            order_validation=order_validation
         )
         
     except Exception as e:
@@ -358,23 +378,30 @@ async def auto_purchase_order(request: ForecastRequest):
         # Получаем прогноз
         forecast_response = await forecast_demand(request)
         
-        # Если остатков мало, создаем заказ
-        if forecast_response.days_until_oos <= 7 and forecast_response.recommended_order > 0:
+        # Проверяем, нужно ли создавать заказ
+        should_create = ProductRules.should_create_order(
+            request.product_code,
+            forecast_response.days_until_oos,
+            forecast_response.recommended_order
+        )
+        
+        if should_create and forecast_response.final_order > 0:
             purchase_order = await create_purchase_order(
                 request.product_code, 
-                forecast_response.recommended_order
+                forecast_response.final_order
             )
             
             return {
                 "message": "Заказ создан автоматически",
                 "forecast": forecast_response.dict(),
-                "purchase_order": purchase_order.dict()
+                "purchase_order": purchase_order.dict(),
+                "reason": f"Остатков хватит на {forecast_response.days_until_oos} дней"
             }
         else:
             return {
                 "message": "Заказ не требуется",
                 "forecast": forecast_response.dict(),
-                "reason": f"Остатков хватит на {forecast_response.days_until_oos} дней"
+                "reason": f"Остатков хватит на {forecast_response.days_until_oos} дней или заказ меньше минимального"
             }
             
     except Exception as e:
@@ -386,9 +413,9 @@ async def health_check():
     """Проверка здоровья API"""
     return {
         "status": "healthy",
-        "models_loaded": universal_models is not None,
-        "data_loaded": consumption_data is not None,
-        "model_type": "universal",
+        "models_loaded": production_models is not None,
+        "data_loaded": production_data is not None,
+        "model_type": "production",
         "timestamp": datetime.now().isoformat()
     }
 
