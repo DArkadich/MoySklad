@@ -27,9 +27,15 @@ class ContainerModelTrainer:
     
     def __init__(self):
         self.models_dir = "/app/data/models"
-        os.makedirs(self.models_dir, exist_ok=True)
+        try:
+            os.makedirs(self.models_dir, exist_ok=True)
+        except PermissionError:
+            # Если нет прав, создаем в временной папке
+            self.models_dir = "/tmp/models"
+            os.makedirs(self.models_dir, exist_ok=True)
+            logger.info(f"📁 Модели будут сохранены в {self.models_dir}")
         
-    def create_test_data(self):
+    def create_test_data(self, data_dir):
         """Создает тестовые данные если исторических нет"""
         logger.info("📊 Создание тестовых данных...")
         
@@ -74,8 +80,11 @@ class ContainerModelTrainer:
         stock_df = pd.DataFrame(stock_data)
         sales_df = pd.DataFrame(sales_data)
         
-        stock_df.to_csv('/app/data/stock_history.csv', index=False)
-        sales_df.to_csv('/app/data/sales_history.csv', index=False)
+        stock_file = os.path.join(data_dir, 'stock_history.csv')
+        sales_file = os.path.join(data_dir, 'sales_history.csv')
+        
+        stock_df.to_csv(stock_file, index=False)
+        sales_df.to_csv(sales_file, index=False)
         
         logger.info(f"✅ Создано {len(stock_data)} записей для {len(products)} товаров")
         return products
@@ -151,18 +160,30 @@ class ContainerModelTrainer:
         logger.info("🚀 Начало обучения моделей...")
         
         try:
+            # Создаем папку data если её нет
+            data_dir = '/app/data'
+            try:
+                os.makedirs(data_dir, exist_ok=True)
+            except PermissionError:
+                data_dir = '/tmp/data'
+                os.makedirs(data_dir, exist_ok=True)
+                logger.info(f"📁 Данные будут сохранены в {data_dir}")
+            
             # Создаем тестовые данные если их нет
-            if not os.path.exists('/app/data/stock_history.csv'):
-                products = self.create_test_data()
+            stock_file = os.path.join(data_dir, 'stock_history.csv')
+            sales_file = os.path.join(data_dir, 'sales_history.csv')
+            
+            if not os.path.exists(stock_file):
+                products = self.create_test_data(data_dir)
             else:
                 # Загружаем существующие данные
-                stock_data = pd.read_csv('/app/data/stock_history.csv')
-                sales_data = pd.read_csv('/app/data/sales_history.csv')
+                stock_data = pd.read_csv(stock_file)
+                sales_data = pd.read_csv(sales_file)
                 products = stock_data['product_code'].unique()
             
             # Загружаем данные
-            stock_data = pd.read_csv('/app/data/stock_history.csv')
-            sales_data = pd.read_csv('/app/data/sales_history.csv')
+            stock_data = pd.read_csv(stock_file)
+            sales_data = pd.read_csv(sales_file)
             
             # Конвертируем даты
             stock_data['date'] = pd.to_datetime(stock_data['date'])
