@@ -73,6 +73,7 @@ async def export_stock_history(start_date, end_date, filename):
                             'product_name': product_name,
                             'product_id': product_id,
                             'available': available,
+                            'export_date': datetime.now().strftime('%Y-%m-%d'),
                             'meta': json.dumps(item, ensure_ascii=False)
                         }
                         
@@ -99,10 +100,11 @@ async def export_stock_history(start_date, end_date, filename):
                         total_rows += 1
                     
                     # Пауза между запросами
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.5)
                     
                 except Exception as e:
                     print(f"Ошибка при получении данных для {current_date}: {e}")
+                    await asyncio.sleep(2)  # Увеличенная пауза при ошибке
                 
                 current_date += timedelta(days=1)
         

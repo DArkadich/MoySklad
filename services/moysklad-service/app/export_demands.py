@@ -65,8 +65,8 @@ async def export_demands(start_date, end_date, filename):
                 print(f"Найдено {len(demands)} документов продаж")
                 
                 for demand in demands:
-                    # Убираем лимит - экспортируем все доступные данные
-                    pass
+
+                    # Обрабатываем документ продажи
                     
                     demand_id = demand.get('id')
                     demand_date = demand.get('moment', '')
@@ -105,6 +105,7 @@ async def export_demands(start_date, end_date, filename):
                             'product_id': product_id,
                             'quantity': quantity,
                             'demand_id': demand_id,
+                            'export_date': datetime.now().strftime('%Y-%m-%d'),
                             'meta': json.dumps(assortment if isinstance(assortment, dict) else {}, ensure_ascii=False)
                         }
                         

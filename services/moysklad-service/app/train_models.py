@@ -378,9 +378,9 @@ class SimpleModelTrainer:
         
         return features
     
-    def train_simple_models(self, training_data: Dict[str, List[Dict]]):
-        """Обучение простых моделей для всех продуктов"""
-        logger.info("Начинаем обучение простых моделей...")
+    def train_advanced_models(self, training_data: Dict[str, List[Dict]]):
+        """Обучение продвинутых моделей для всех продуктов"""
+        logger.info("Начинаем обучение продвинутых моделей...")
         
         trained_models = 0
         failed_models = 0
@@ -392,26 +392,66 @@ class SimpleModelTrainer:
             try:
                 logger.info(f"Обучение модели для продукта {product_id}...")
                 
-                # Создаем простую модель (среднее потребление)
-                quantities = [f['quantity'] for f in features]
-                avg_consumption = np.mean(quantities)
+                if len(features) < 10:
+                    logger.warning(f"Недостаточно данных для продукта {product_id} ({len(features)} записей)")
+                    continue
                 
-                # Сохраняем простую модель
+                # Создаем DataFrame для анализа
+                df = pd.DataFrame(features)
+                df['date'] = pd.to_datetime(df['date'])
+                df.set_index('date', inplace=True)
+                
+                # Базовые статистики
+                avg_consumption = df['quantity'].mean()
+                std_consumption = df['quantity'].std()
+                min_consumption = df['quantity'].min()
+                max_consumption = df['quantity'].max()
+                
+                # Сезонность (если есть достаточно данных)
+                seasonal_pattern = {}
+                if len(df) >= 30:
+                    # Недельная сезонность
+                    weekly_avg = df.groupby(df.index.dayofweek)['quantity'].mean()
+                    seasonal_pattern['weekly'] = weekly_avg.to_dict()
+                    
+                    # Месячная сезонность
+                    monthly_avg = df.groupby(df.index.month)['quantity'].mean()
+                    seasonal_pattern['monthly'] = monthly_avg.to_dict()
+                
+                # Тренд (линейная регрессия)
+                if len(df) >= 7:
+                    X_trend = np.arange(len(df)).reshape(-1, 1)
+                    y_trend = df['quantity'].values
+                    trend_coef = np.polyfit(X_trend.flatten(), y_trend, 1)[0]
+                else:
+                    trend_coef = 0
+                
+                # Сохраняем продвинутую модель
                 model_data = {
                     'product_id': product_id,
-                    'model_type': 'simple_average',
-                    'avg_consumption': avg_consumption,
+                    'model_type': 'advanced_statistical',
+                    'avg_consumption': float(avg_consumption),
+                    'std_consumption': float(std_consumption),
+                    'min_consumption': float(min_consumption),
+                    'max_consumption': float(max_consumption),
+                    'trend_coefficient': float(trend_coef),
+                    'seasonal_pattern': seasonal_pattern,
                     'trained_at': datetime.now().isoformat(),
                     'features_count': len(features),
-                    'accuracy': 0.8  # Простая оценка
+                    'data_points': len(df),
+                    'confidence': min(0.95, len(df) / 100)  # Уверенность на основе количества данных
                 }
                 
-                model_file = f"/app/models/{product_id}_simple.pkl"
+                model_file = f"/app/models/{product_id}_advanced.json"
                 with open(model_file, 'w') as f:
-                    json.dump(model_data, f, indent=2)
+                    json.dump(model_data, f, indent=2, default=str)
                 
                 trained_models += 1
-                logger.info(f"Модель для продукта {product_id} обучена. Среднее потребление: {avg_consumption:.2f}")
+                logger.info(f"Продвинутая модель для продукта {product_id} обучена:")
+                logger.info(f"  Среднее потребление: {avg_consumption:.2f}")
+                logger.info(f"  Стандартное отклонение: {std_consumption:.2f}")
+                logger.info(f"  Тренд: {trend_coef:.4f}")
+                logger.info(f"  Уверенность: {model_data['confidence']:.2f}")
                 
             except Exception as e:
                 failed_models += 1
@@ -435,7 +475,7 @@ async def main():
         training_data = trainer.prepare_training_data(data['sales'], data['stock'])
         
         # Обучаем модели
-        trained, failed = trainer.train_simple_models(training_data)
+        trained, failed = trainer.train_advanced_models(training_data)
         
         logger.info(f"Обучение завершено! Успешно обучено моделей: {trained}, Ошибок: {failed}")
         
