@@ -134,6 +134,8 @@ async def export_stock_history_fast(start_date: datetime, end_date: datetime, fi
                 if data.get('rows'):
                     for row in data['rows']:
                         fieldnames.update(row.keys())
+                    # Добавляем поле export_date
+                    fieldnames.add('export_date')
                     print(f"Найдено полей: {len(fieldnames)}")
                     print(f"Поля: {sorted(fieldnames)}")
                 else:
