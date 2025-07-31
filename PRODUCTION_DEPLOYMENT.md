@@ -99,8 +99,15 @@ docker-compose up -d
 # Проверить наличие файлов
 ls -la data/production_stock_data.csv
 
-# Если файлов нет, скопировать из репозитория
+# Если файлов нет, восстановить из git
 git checkout data/production_stock_data.csv
+git checkout data/accurate_consumption_results.csv
+git checkout data/universal_forecast_models.pkl
+git checkout data/universal_model_performance.csv
+
+# Или использовать скрипт копирования
+chmod +x copy_data_to_prod.sh
+./copy_data_to_prod.sh
 ```
 
 ### **Если обучение не работает:**
