@@ -89,6 +89,31 @@ class ContainerModelTrainer:
         logger.info(f"✅ Создано {len(stock_data)} записей для {len(products)} товаров")
         return products
     
+    def load_real_historical_data(self, data_dir):
+        """Загружает реальные исторические данные"""
+        logger.info("📊 Загрузка реальных исторических данных...")
+        
+        # Проверяем наличие реальных данных
+        production_data_file = os.path.join(data_dir, 'production_stock_data.csv')
+        
+        if os.path.exists(production_data_file):
+            try:
+                # Загружаем реальные данные
+                data = pd.read_csv(production_data_file)
+                logger.info(f"✅ Загружено {len(data)} записей из реальных данных")
+                
+                # Извлекаем уникальные товары
+                products = data['product_code'].unique() if 'product_code' in data.columns else []
+                logger.info(f"📦 Найдено {len(products)} товаров")
+                
+                return data, products
+            except Exception as e:
+                logger.error(f"❌ Ошибка загрузки реальных данных: {e}")
+                return None, []
+        else:
+            logger.warning("⚠️ Реальные данные не найдены, используем тестовые")
+            return None, []
+    
     def prepare_features(self, stock_data, sales_data):
         """Подготавливает признаки для ML"""
         logger.info("🔧 Подготовка признаков...")
@@ -122,18 +147,78 @@ class ContainerModelTrainer:
         
         return data
     
+    def prepare_features_from_real_data(self, real_data):
+        """Подготавливает признаки из реальных данных"""
+        logger.info("🔧 Подготовка признаков из реальных данных...")
+        
+        # Конвертируем даты если есть
+        if 'date' in real_data.columns:
+            real_data['date'] = pd.to_datetime(real_data['date'])
+        
+        # Создаем базовые признаки
+        if 'date' in real_data.columns:
+            real_data['year'] = real_data['date'].dt.year
+            real_data['month'] = real_data['date'].dt.month
+            real_data['day_of_week'] = real_data['date'].dt.dayofweek
+            real_data['day_of_year'] = real_data['date'].dt.dayofyear
+        
+        # Добавляем числовые признаки если их нет
+        if 'quantity' not in real_data.columns:
+            real_data['quantity'] = 1  # По умолчанию
+        
+        if 'stock' not in real_data.columns:
+            real_data['stock'] = 100  # По умолчанию
+        
+        # Группируем по товару и дате для агрегации
+        if 'product_code' in real_data.columns:
+            # Создаем лаги и скользящие средние
+            for lag in [1, 7, 30]:
+                real_data[f'quantity_lag_{lag}'] = real_data.groupby('product_code')['quantity'].shift(lag)
+                real_data[f'stock_lag_{lag}'] = real_data.groupby('product_code')['stock'].shift(lag)
+            
+            for window in [7, 30]:
+                real_data[f'quantity_ma_{window}'] = real_data.groupby('product_code')['quantity'].rolling(window).mean().reset_index(0, drop=True)
+                real_data[f'stock_ma_{window}'] = real_data.groupby('product_code')['stock'].rolling(window).mean().reset_index(0, drop=True)
+            
+            # Статистики
+            real_data['quantity_std_30'] = real_data.groupby('product_code')['quantity'].rolling(30).std().reset_index(0, drop=True)
+            real_data['stock_std_30'] = real_data.groupby('product_code')['stock'].rolling(30).std().reset_index(0, drop=True)
+        
+        # Удаляем NaN
+        real_data = real_data.dropna()
+        
+        logger.info(f"✅ Подготовлено {len(real_data)} записей с признаками")
+        return real_data
+    
     def train_model_for_product(self, product_data, product_code):
         """Обучает модель для конкретного товара"""
         logger.info(f"🎯 Обучение модели для товара {product_code}...")
         
-        # Признаки для обучения
-        feature_columns = [
-            'year', 'month', 'day_of_week', 'day_of_year',
-            'stock_lag_1', 'stock_lag_7', 'stock_lag_30',
-            'sales_lag_1', 'sales_lag_7', 'sales_lag_30',
-            'stock_ma_7', 'stock_ma_30', 'sales_ma_7', 'sales_ma_30',
-            'stock_std_30', 'sales_std_30'
-        ]
+        # Признаки для обучения (адаптивные)
+        base_features = ['year', 'month', 'day_of_week', 'day_of_year']
+        lag_features = []
+        ma_features = []
+        std_features = []
+        
+        # Добавляем доступные признаки
+        for lag in [1, 7, 30]:
+            if f'stock_lag_{lag}' in product_data.columns:
+                lag_features.append(f'stock_lag_{lag}')
+            if f'quantity_lag_{lag}' in product_data.columns:
+                lag_features.append(f'quantity_lag_{lag}')
+        
+        for window in [7, 30]:
+            if f'stock_ma_{window}' in product_data.columns:
+                ma_features.append(f'stock_ma_{window}')
+            if f'quantity_ma_{window}' in product_data.columns:
+                ma_features.append(f'quantity_ma_{window}')
+        
+        if 'stock_std_30' in product_data.columns:
+            std_features.append('stock_std_30')
+        if 'quantity_std_30' in product_data.columns:
+            std_features.append('quantity_std_30')
+        
+        feature_columns = base_features + lag_features + ma_features + std_features
         
         X = product_data[feature_columns]
         y = product_data['quantity']  # Прогнозируем продажи
@@ -169,21 +254,45 @@ class ContainerModelTrainer:
                 os.makedirs(data_dir, exist_ok=True)
                 logger.info(f"📁 Данные будут сохранены в {data_dir}")
             
-            # Создаем тестовые данные если их нет
-            stock_file = os.path.join(data_dir, 'stock_history.csv')
-            sales_file = os.path.join(data_dir, 'sales_history.csv')
+            # Пытаемся загрузить реальные исторические данные
+            real_data, real_products = self.load_real_historical_data(data_dir)
             
-            if not os.path.exists(stock_file):
-                products = self.create_test_data(data_dir)
+            if real_data is not None and len(real_products) > 0:
+                # Используем реальные данные
+                logger.info("🎯 Используем реальные исторические данные")
+                
+                # Подготавливаем признаки из реальных данных
+                data = self.prepare_features_from_real_data(real_data)
+                
+                # Обучаем модели для каждого товара
+                trained_models = []
+                for product_code in real_products[:10]:  # Ограничиваем первыми 10 товарами
+                    product_data = data[data['product_code'] == product_code]
+                    if len(product_data) > 100:  # Минимум данных для обучения
+                        model_path = self.train_model_for_product(product_data, product_code)
+                        trained_models.append(model_path)
+                
+                logger.info(f"✅ Обучено {len(trained_models)} моделей на реальных данных")
+                return trained_models
             else:
-                # Загружаем существующие данные
+                # Используем тестовые данные
+                logger.info("🧪 Используем тестовые данные")
+                
+                # Создаем тестовые данные если их нет
+                stock_file = os.path.join(data_dir, 'stock_history.csv')
+                sales_file = os.path.join(data_dir, 'sales_history.csv')
+                
+                if not os.path.exists(stock_file):
+                    products = self.create_test_data(data_dir)
+                else:
+                    # Загружаем существующие данные
+                    stock_data = pd.read_csv(stock_file)
+                    sales_data = pd.read_csv(sales_file)
+                    products = stock_data['product_code'].unique()
+                
+                # Загружаем данные
                 stock_data = pd.read_csv(stock_file)
                 sales_data = pd.read_csv(sales_file)
-                products = stock_data['product_code'].unique()
-            
-            # Загружаем данные
-            stock_data = pd.read_csv(stock_file)
-            sales_data = pd.read_csv(sales_file)
             
             # Конвертируем даты
             stock_data['date'] = pd.to_datetime(stock_data['date'])
