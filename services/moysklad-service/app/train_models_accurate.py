@@ -39,11 +39,15 @@ def load_sales_data(filename: str) -> pd.DataFrame:
         # Конвертируем даты
         df[date_column] = pd.to_datetime(df[date_column])
         
-        # Извлекаем product_code из positions_data_str
-        df['product_code'] = df['positions_data_str'].apply(extract_product_code)
+        # Используем существующее поле product_code
+        if 'product_code' in df.columns:
+            logger.info("Используем существующее поле product_code")
+        else:
+            logger.error("Поле product_code не найдено в продажах")
+            return pd.DataFrame()
         
         # Фильтруем записи с валидными кодами
-        valid_sales = df[df['product_code'].notna() & (df['product_code'] != 'unknown')]
+        valid_sales = df[df['product_code'].notna() & (df['product_code'] != 'unknown') & (df['product_code'] != 'nan')]
         logger.info(f"Валидных записей продаж: {len(valid_sales)}")
         
         # Сохраняем имя поля даты для использования в расчетах
@@ -82,34 +86,6 @@ def load_stock_data(filename: str) -> pd.DataFrame:
         logger.error(f"Ошибка загрузки остатков: {e}")
         return pd.DataFrame()
 
-def extract_product_code(positions_str: str) -> str:
-    """Извлекает product_code из строки positions_data_str"""
-    try:
-        if pd.isna(positions_str) or positions_str == 'nan':
-            return None
-            
-        # Парсим JSON строку
-        import ast
-        positions = ast.literal_eval(positions_str)
-        
-        if not positions:
-            return None
-            
-        # Берем первую позицию
-        position = positions[0]
-        assortment = position.get('assortment', {})
-        
-        # Извлекаем код
-        code = assortment.get('code')
-        if code:
-            return str(code)
-            
-        return None
-        
-    except Exception as e:
-        logger.debug(f"Ошибка извлечения product_code: {e}")
-        return None
-
 def calculate_accurate_consumption(sales_df: pd.DataFrame, stock_df: pd.DataFrame, 
                                  product_code: str, start_date: datetime, end_date: datetime) -> Dict:
     """Рассчитывает точное среднее потребление по формуле пользователя"""
@@ -117,7 +93,7 @@ def calculate_accurate_consumption(sales_df: pd.DataFrame, stock_df: pd.DataFram
     logger.info(f"Расчет потребления для товара {product_code} с {start_date} по {end_date}")
     
     # Получаем имя поля даты из атрибутов DataFrame
-    date_column = sales_df.attrs.get('date_column', 'moment')
+    date_column = sales_df.attrs.get('date_column', 'date')
     
     # Фильтруем продажи по товару и периоду
     product_sales = sales_df[
