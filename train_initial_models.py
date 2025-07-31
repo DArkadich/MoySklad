@@ -10,7 +10,7 @@ import os
 import sys
 
 # Добавляем путь к модулям
-sys.path.append('/app')
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -22,7 +22,8 @@ async def main():
     
     try:
         # Импортируем и запускаем обучение на исторических данных
-        from services.moysklad_service.app.train_historical_models import HistoricalModelTrainer
+        sys.path.append('services/moysklad-service/app')
+        from train_historical_models import HistoricalModelTrainer
         
         trainer = HistoricalModelTrainer()
         await trainer.train_models_on_historical_data()
