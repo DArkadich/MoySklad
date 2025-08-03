@@ -14,7 +14,7 @@ fi
 # Запускаем обучение моделей внутри контейнера moysklad-service
 echo "📦 Запуск обучения моделей в контейнере moysklad-service..."
 
-docker exec -it moysklad-service python3 /app/train_models_in_container.py
+docker exec -it moysklad-service python3 /app/rate_limited_training.py
 
 if [ $? -eq 0 ]; then
     echo "✅ Обучение моделей завершено успешно!"
