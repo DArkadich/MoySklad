@@ -24,6 +24,51 @@ from product_rules import ProductRules
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def load_real_models():
+    """Загрузка реальных моделей из data/real_models"""
+    real_models = {}
+    real_models_dir = "data/real_models"
+    
+    if not os.path.exists(real_models_dir):
+        logger.warning(f"Директория реальных моделей не найдена: {real_models_dir}")
+        return real_models
+    
+    try:
+        # Ищем файлы метаданных
+        for filename in os.listdir(real_models_dir):
+            if filename.endswith('_metadata.json'):
+                metadata_path = os.path.join(real_models_dir, filename)
+                
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                
+                product_id = metadata.get('product_id')
+                if not product_id:
+                    continue
+                
+                # Загружаем модели для этого товара
+                product_models = {}
+                for model_name, model_path in metadata.get('models', {}).items():
+                    if os.path.exists(model_path):
+                        with open(model_path, 'rb') as f:
+                            model = pickle.load(f)
+                        product_models[model_name] = model
+                
+                if product_models:
+                    real_models[product_id] = {
+                        'models': product_models,
+                        'metadata': metadata
+                    }
+                    logger.info(f"Загружены реальные модели для товара {product_id}")
+        
+        logger.info(f"Загружено {len(real_models)} товаров с реальными моделями")
+        return real_models
+        
+    except Exception as e:
+        logger.error(f"Ошибка загрузки реальных моделей: {e}")
+        return real_models
+
+
 # FastAPI приложение
 app = FastAPI(title="ML Forecast API", description="API для прогнозирования спроса с ML моделями")
 
@@ -94,7 +139,8 @@ def load_ml_models():
                     for model_name, model_obj in models.items():
                         if hasattr(model_obj, 'predict'):
                             # Используем model_name как product_code
-                            product_code = "30001"  # Универсальный код для всех продуктов
+                            # Получаем реальный product_code из запроса или используем ID товара
+product_code = request.product_code if hasattr(request, 'product_code') else product_id
                             ml_models[product_code] = model_obj
                             logger.info(f"Загружена модель {model_name} для товара {product_code}")
                 
@@ -106,7 +152,8 @@ def load_ml_models():
                     if isinstance(results, dict):
                         for model_name, result_info in results.items():
                             if isinstance(result_info, dict):
-                                product_code = "30001"  # Универсальный код
+                                # Используем реальный product_code
+product_code = request.product_code if hasattr(request, 'product_code') else product_id
                                 if product_code in ml_models:
                                     if 'metadata' in result_info:
                                         model_metadata[product_code] = result_info['metadata']
