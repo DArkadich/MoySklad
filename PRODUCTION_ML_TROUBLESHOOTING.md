@@ -101,17 +101,20 @@ curl -X POST http://localhost:8002/data/update
 
 ## Быстрые команды для диагностики
 
-### 1. Проверка здоровья системы
+### 1. Проверка здоровья системы (Docker)
 
 ```bash
-# Проверка всех сервисов
-./quick_ml_check.sh
+# Проверка ML-моделей в Docker контейнере
+./quick_ml_check_docker.sh
 
-# Упрощенная проверка
+# Детальная проверка через Python
+python3 check_ml_docker.py
+
+# Упрощенная проверка (если нет зависимостей)
 python3 check_ml_simple.py
 
-# Проверка через curl
-curl http://localhost:8002/health
+# Проверка через curl в контейнере
+docker exec ml-service curl http://localhost:8002/health
 ```
 
 ### 2. Проверка логов
