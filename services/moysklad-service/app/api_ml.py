@@ -18,6 +18,7 @@ from pydantic import BaseModel
 import joblib
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
+from product_rules import ProductRules
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -332,17 +333,49 @@ async def forecast_demand(request: ForecastRequest):
         daily_consumption = ml_prediction['consumption']
         days_until_oos = int(current_stock / daily_consumption) if daily_consumption > 0 else 999
         
+        # Получаем информацию о товаре и правилах
+        product_info = ProductRules.get_product_info(request.product_code)
+        
+        # Рассчитываем страховой запас
+        safety_stock = ProductRules.calculate_safety_stock(request.product_code, daily_consumption)
+        
         # Рассчитываем рекомендуемый заказ
-        safety_stock = daily_consumption * 30  # 30 дней страхового запаса
         recommended_order = max(0, safety_stock - current_stock)
         
-        # Применяем ограничения
-        final_order = max(0, min(recommended_order, 1000))  # Максимум 1000 ед.
+        # Применяем ограничения к заказу
+        final_order = ProductRules.apply_order_constraints(request.product_code, recommended_order)
         
-        # Валидация заказа
-        order_validation = {
-            "valid": final_order > 0 and days_until_oos <= 14,
-            "reason": f"Остатков хватит на {days_until_oos} дней"
+        # Валидируем заказ
+        order_validation = ProductRules.validate_order(request.product_code, final_order)
+        
+        # Проверяем, нужно ли создавать заказ
+        should_create = ProductRules.should_create_order(
+            request.product_code, days_until_oos, recommended_order, combined_delivery=False
+        )
+        
+        # Добавляем информацию о доставке
+        delivery_info = {
+            'production_days': product_info.get('production_days', 45),
+            'delivery_days': product_info.get('delivery_days', 12),
+            'total_lead_time': product_info.get('total_lead_time', 57),
+            'can_combine_delivery': product_info.get('can_combine_delivery', False),
+            'category': product_info.get('category', 'unknown')
+        }
+        
+        # Обновляем product_info с информацией о доставке
+        enhanced_product_info = {
+            "name": f"Товар {request.product_code}",
+            "description": product_info.get('description', ''),
+            "type": product_info.get('type', ''),
+            "min_order": product_info.get('min_order', 1),
+            "multiple": product_info.get('multiple', 1),
+            "production_days": product_info.get('production_days', 45),
+            "delivery_days": product_info.get('delivery_days', 12),
+            "total_lead_time": product_info.get('total_lead_time', 57),
+            "safety_stock_days": product_info.get('safety_stock_days', 7),
+            "category": product_info.get('category', 'unknown'),
+            "can_combine_delivery": product_info.get('can_combine_delivery', False),
+            "delivery_info": delivery_info
         }
         
         return ForecastResponse(
@@ -355,7 +388,7 @@ async def forecast_demand(request: ForecastRequest):
             confidence=ml_prediction['confidence'],
             models_used=[ml_prediction['model_type']],
             model_type="ml_enhanced",
-            product_info={"name": f"Товар {request.product_code}"},
+            product_info=enhanced_product_info,
             order_validation=order_validation,
             model_metadata=ml_prediction['metadata']
         )
@@ -382,6 +415,55 @@ async def models_status():
         "model_codes": list(ml_models.keys()),
         "last_updated": datetime.now().isoformat()
     }
+
+@app.post("/delivery/optimize")
+async def optimize_delivery():
+    """Оптимизация доставки с учетом объединения поставок"""
+    try:
+        from delivery_optimizer import DeliveryOptimizer
+        
+        optimizer = DeliveryOptimizer()
+        result = await optimizer.optimize_delivery_schedule()
+        
+        return {
+            "status": "success",
+            "optimization_result": result,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Ошибка оптимизации доставки: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/delivery/rules")
+async def get_delivery_rules():
+    """Получение правил доставки для всех типов товаров"""
+    try:
+        rules_summary = {}
+        
+        for product_type, rules in ProductRules.PRODUCT_RULES.items():
+            rules_summary[product_type] = {
+                'description': rules['description'],
+                'production_days': rules.get('production_days', 45),
+                'delivery_days': rules.get('delivery_days', 12),
+                'combined_delivery_days': rules.get('combined_delivery_days', 0),
+                'total_lead_time': rules.get('production_days', 45) + rules.get('delivery_days', 12),
+                'category': rules.get('category', 'unknown'),
+                'can_combine_delivery': rules.get('can_combine_delivery', False),
+                'min_order': rules['min_order'],
+                'multiple': rules['multiple'],
+                'safety_stock_days': rules['safety_stock_days']
+            }
+        
+        return {
+            "status": "success",
+            "delivery_rules": rules_summary,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Ошибка получения правил доставки: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

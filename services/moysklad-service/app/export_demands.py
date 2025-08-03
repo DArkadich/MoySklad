@@ -66,7 +66,7 @@ async def export_demands(start_date, end_date, filename):
                 
                 for demand in demands:
 
-                    # Обрабатываем документ продажи
+                    # Обрабатываем документ  продажи
                     
                     demand_id = demand.get('id')
                     demand_date = demand.get('moment', '')
