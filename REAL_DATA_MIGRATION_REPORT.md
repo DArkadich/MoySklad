@@ -129,7 +129,7 @@ data/real_models/
 
 1. **Запуск обучения моделей**:
    ```bash
-   python3 train_real_models.py
+   ./train_models_in_container.sh
    ```
 
 2. **Перезапуск системы**:

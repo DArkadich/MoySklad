@@ -107,7 +107,7 @@ curl -s http://localhost:8001/models/status
 
 ```bash
 # Обучение моделей на реальных данных
-python3 train_real_models.py
+./train_models_in_container.sh
 
 # Обновление API (уже выполнено)
 python3 update_api_for_real_models.py

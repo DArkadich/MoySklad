@@ -11,7 +11,8 @@ MOYSKLAD_API_URL=https://api.moysklad.ru/api/remap/1.2
 
 ### 2. Обучение моделей на реальных данных
 ```bash
-python3 train_real_models.py
+# Запуск обучения моделей внутри Docker контейнера
+./train_models_in_container.sh
 ```
 
 ### 3. Перезапуск системы

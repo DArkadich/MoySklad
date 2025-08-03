@@ -21,7 +21,8 @@ MOYSKLAD_API_URL=https://api.moysklad.ru/api/remap/1.2
 Запустите скрипт для получения реальных данных и обучения моделей:
 
 ```bash
-python train_real_models.py
+# Запуск обучения моделей внутри Docker контейнера
+./train_models_in_container.sh
 ```
 
 Этот скрипт:
