@@ -110,7 +110,7 @@ for endpoint in "${FORECAST_ENDPOINTS[@]}"; do
     echo "   Тест $endpoint..."
     RESPONSE=$(curl -s --max-time 10 -X POST "$endpoint" \
         -H "Content-Type: application/json" \
-        -d '{"product_id":"30001","forecast_days":30}' 2>/dev/null)
+        -d '{"product_code":"30001","forecast_days":30}' 2>/dev/null)
     
     if [ $? -eq 0 ] && [ ! -z "$RESPONSE" ]; then
         echo "✅ Прогноз получен с $endpoint"

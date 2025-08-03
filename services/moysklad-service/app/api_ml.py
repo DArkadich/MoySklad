@@ -66,27 +66,34 @@ def load_ml_models():
     """Загружает ML модели"""
     global ml_models, model_scalers, model_metadata
     
-    models_dir = "/app/data/models"
+    models_dir = "/app/data"
     if not os.path.exists(models_dir):
-        logger.warning(f"Директория моделей не найдена: {models_dir}")
+        logger.warning(f"Директория данных не найдена: {models_dir}")
         return
     
     try:
-        # Загружаем все модели из директории
-        for filename in os.listdir(models_dir):
-            if filename.endswith('.joblib'):
-                product_code = filename.replace('.joblib', '')
-                model_path = os.path.join(models_dir, filename)
-                
-                # Загружаем модель
-                model_data = joblib.load(model_path)
-                ml_models[product_code] = model_data['model']
-                model_scalers[product_code] = model_data['scaler']
-                model_metadata[product_code] = model_data['metadata']
-                
-                logger.info(f"Загружена модель для товара {product_code}")
-        
-        logger.info(f"Загружено моделей: {len(ml_models)}")
+        # Загружаем универсальную модель из файла
+        universal_model_path = os.path.join(models_dir, "universal_forecast_models.pkl")
+        if os.path.exists(universal_model_path):
+            with open(universal_model_path, 'rb') as f:
+                model_data = pickle.load(f)
+            
+            # Загружаем модели из универсального файла
+            if isinstance(model_data, dict) and 'models' in model_data:
+                models = model_data['models']
+                for product_code, model_info in models.items():
+                    if isinstance(model_info, dict) and 'model' in model_info:
+                        ml_models[product_code] = model_info['model']
+                        if 'scaler' in model_info:
+                            model_scalers[product_code] = model_info['scaler']
+                        if 'metadata' in model_info:
+                            model_metadata[product_code] = model_info['metadata']
+                        
+                        logger.info(f"Загружена модель для товара {product_code}")
+            
+            logger.info(f"Загружено моделей: {len(ml_models)}")
+        else:
+            logger.warning(f"Файл универсальной модели не найден: {universal_model_path}")
         
     except Exception as e:
         logger.error(f"Ошибка загрузки моделей: {e}")

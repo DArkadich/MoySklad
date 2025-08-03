@@ -1,5 +1,53 @@
 # Устранение проблем с ML-моделями на продакшене
 
+## Проблема: Модели не загружаются (models_loaded: 0)
+
+### 1. Диагностика проблемы
+
+```bash
+# Проверка логов
+docker-compose logs forecast-api | grep -E "(model|load|error)"
+
+# Проверка файлов в контейнере
+docker exec forecast-api ls -la /app/data/
+
+# Проверка здоровья API
+curl -s http://localhost:8001/health | jq .
+```
+
+### 2. Причина проблемы
+
+**Проблема:** Код ищет модели в `/app/data/models/`, но файлы находятся в `/app/data/`
+
+**Симптомы:**
+- В логах: `"Директория моделей не найдена: /app/data/models"`
+- В health check: `"models_loaded": 0`
+- API работает, но модели не загружены
+
+### 3. Решение
+
+```bash
+# Перезапуск с исправлениями
+./restart_ml_fixed.sh
+
+# Или ручная перезагрузка
+docker-compose stop forecast-api moysklad-service
+docker-compose build forecast-api moysklad-service
+docker-compose up -d forecast-api moysklad-service
+```
+
+### 4. Проверка после исправления
+
+```bash
+# Проверка загрузки моделей
+curl -s http://localhost:8001/health | jq .
+
+# Тест прогнозирования
+curl -X POST http://localhost:8001/forecast \
+  -H "Content-Type: application/json" \
+  -d '{"product_code":"30001","forecast_days":30}'
+```
+
 ## Проблема: Сервисы перезапускаются (Restarting)
 
 ### 1. Проверка статуса системы
@@ -111,23 +159,23 @@ python3 check_ml_simple.py
 
 ```bash
 # Проверьте наличие файлов моделей
-ls -la /app/data/models/
+ls -la /app/data/
 
 # Вход в контейнер для проверки
-docker exec -it ml-service ls -la /app/data/models/
+docker exec forecast-api ls -la /app/data/
 ```
 
 ### 2. Обучение моделей
 
 ```bash
 # Обучение всех моделей
-curl -X POST http://localhost:8002/retrain-all
+curl -X POST http://localhost:8001/retrain-all
 
 # Обучение конкретной модели
-curl -X POST http://localhost:8002/train \
+curl -X POST http://localhost:8001/train \
   -H "Content-Type: application/json" \
   -d '{
-    "product_id": "30001",
+    "product_code": "30001",
     "model_type": "ensemble",
     "force_retrain": true
   }'
@@ -137,7 +185,7 @@ curl -X POST http://localhost:8002/train \
 
 ```bash
 # Обновление данных для обучения
-curl -X POST http://localhost:8002/data/update
+curl -X POST http://localhost:8001/data/update
 ```
 
 ## Проблема: Ошибки подключения к базе данных
