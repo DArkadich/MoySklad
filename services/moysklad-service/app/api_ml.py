@@ -75,28 +75,64 @@ def load_ml_models():
         # Загружаем универсальную модель из файла
         universal_model_path = os.path.join(models_dir, "universal_forecast_models.pkl")
         if os.path.exists(universal_model_path):
+            logger.info(f"Загрузка модели из: {universal_model_path}")
+            
             with open(universal_model_path, 'rb') as f:
                 model_data = pickle.load(f)
             
+            logger.info(f"Тип загруженных данных: {type(model_data)}")
+            
             # Загружаем модели из универсального файла
-            if isinstance(model_data, dict) and 'models' in model_data:
-                models = model_data['models']
-                for product_code, model_info in models.items():
-                    if isinstance(model_info, dict) and 'model' in model_info:
-                        ml_models[product_code] = model_info['model']
-                        if 'scaler' in model_info:
-                            model_scalers[product_code] = model_info['scaler']
-                        if 'metadata' in model_info:
-                            model_metadata[product_code] = model_info['metadata']
-                        
-                        logger.info(f"Загружена модель для товара {product_code}")
+            if isinstance(model_data, dict):
+                logger.info(f"Ключи в данных: {list(model_data.keys())}")
+                
+                # Проверяем структуру models
+                if 'models' in model_data:
+                    models = model_data['models']
+                    logger.info(f"Найдено моделей в 'models': {len(models)}")
+                    
+                    for model_name, model_obj in models.items():
+                        if hasattr(model_obj, 'predict'):
+                            # Используем model_name как product_code
+                            product_code = "30001"  # Универсальный код для всех продуктов
+                            ml_models[product_code] = model_obj
+                            logger.info(f"Загружена модель {model_name} для товара {product_code}")
+                
+                # Проверяем структуру results для метаданных
+                if 'results' in model_data:
+                    results = model_data['results']
+                    logger.info(f"Найдено результатов: {len(results) if isinstance(results, dict) else 'не dict'}")
+                    
+                    if isinstance(results, dict):
+                        for model_name, result_info in results.items():
+                            if isinstance(result_info, dict):
+                                product_code = "30001"  # Универсальный код
+                                if product_code in ml_models:
+                                    if 'metadata' in result_info:
+                                        model_metadata[product_code] = result_info['metadata']
+                                    if 'scaler' in result_info:
+                                        model_scalers[product_code] = result_info['scaler']
+                                    logger.info(f"Добавлены метаданные для модели {model_name}")
+                
+                # Проверяем features
+                if 'features' in model_data:
+                    features = model_data['features']
+                    logger.info(f"Найдено признаков: {len(features) if isinstance(features, list) else 'не список'}")
             
             logger.info(f"Загружено моделей: {len(ml_models)}")
+            
+            if len(ml_models) == 0:
+                logger.warning("Модели не загружены. Проверьте структуру данных.")
+            else:
+                logger.info("✅ Модели успешно загружены!")
+                
         else:
             logger.warning(f"Файл универсальной модели не найден: {universal_model_path}")
         
     except Exception as e:
         logger.error(f"Ошибка загрузки моделей: {e}")
+        import traceback
+        logger.error(f"Полная ошибка: {traceback.format_exc()}")
 
 def create_ml_features(product_code: str, current_date: datetime, 
                       current_stock: float = None) -> pd.DataFrame:
