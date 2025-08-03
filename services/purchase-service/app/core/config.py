@@ -15,14 +15,14 @@ class Settings(BaseSettings):
     moysklad_api_url: str = "https://api.moysklad.ru/api/remap/1.2"
     
     # Database
-    database_url: str = "postgresql://user:password@localhost:5432/horiens_purchase"
+    database_url: str = "postgresql://moysklad:moysklad123@postgres:5432/moysklad"
     
     # Redis
-    redis_url: str = "redis://localhost:6379"
+    redis_url: str = "redis://redis:6379"
     redis_db: int = 0
     
     # RabbitMQ
-    rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
+    rabbitmq_url: str = "amqp://moysklad:moysklad123@rabbitmq:5672/"
     
     # Telegram Bot
     telegram_bot_token: Optional[str] = None

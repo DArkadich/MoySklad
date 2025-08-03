@@ -88,6 +88,50 @@ services:
       - moysklad-network
     command: python app/api_ml.py
 
+  # Analytics Service
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile
+    container_name: moysklad-analytics-service
+    environment:
+      - DATABASE_URL=postgresql://moysklad:moysklad123@postgres:5432/moysklad
+      - REDIS_URL=redis://redis:6379
+      - MOYSKLAD_API_TOKEN=${MOYSKLAD_API_TOKEN}
+    volumes:
+      - ./services/analytics-service:/app
+      - ./data:/app/data
+    ports:
+      - "8004:8000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - moysklad-network
+
+  # Purchase Service
+  purchase-service:
+    build:
+      context: ./services/purchase-service
+      dockerfile: Dockerfile
+    container_name: moysklad-purchase-service
+    environment:
+      - DATABASE_URL=postgresql://moysklad:moysklad123@postgres:5432/moysklad
+      - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://moysklad:moysklad123@rabbitmq:5672/
+      - MOYSKLAD_API_TOKEN=${MOYSKLAD_API_TOKEN}
+    volumes:
+      - ./services/purchase-service:/app
+      - ./data:/app/data
+    ports:
+      - "8005:8000"
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - moysklad-network
+
   # Cron для ежедневной автоматизации
   automation-cron:
     build:
