@@ -101,16 +101,21 @@ class RateLimitedMoySkladCollector:
     async def get_sales_data(self, product_id: str, days_back: int = 90) -> List[Dict]:
         """Получение данных о продажах товара с ограничениями"""
         logger.info(f"📊 Получение данных о продажах для товара {product_id}...")
-        
+
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
-        
-        # Получаем документы продаж с ограничениями
+
+        # Формат дат без микросекунд для совместимости с API
+        moment_from = start_date.replace(microsecond=0).strftime('%Y-%m-%dT00:00:00')
+        moment_to = end_date.replace(microsecond=0).strftime('%Y-%m-%dT23:59:59')
+
+        # Получаем документы продаж с ограничениями (используем momentFrom/momentTo)
         data = await self._make_request(
-            "GET", 
+            "GET",
             f"{self.api_url}/entity/demand",
             params={
-                "filter": f"moment>={start_date.isoformat()},moment<={end_date.isoformat()}",
+                "momentFrom": moment_from,
+                "momentTo": moment_to,
                 "limit": 100  # Уменьшаем лимит
             }
         )
