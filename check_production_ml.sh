@@ -13,7 +13,7 @@ if command -v docker &> /dev/null; then
     echo "✅ Docker доступен"
     
     # Проверяем запущенные контейнеры
-    ML_CONTAINERS=$(docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(ml-service|forecast-api|moysklad-service)")
+    ML_CONTAINERS=$(docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(forecast-api|moysklad-service)")
     
     if [ ! -z "$ML_CONTAINERS" ]; then
         echo "✅ Найдены ML-контейнеры:"
@@ -115,7 +115,7 @@ echo "5️⃣ ПРОВЕРКА ФАЙЛОВ МОДЕЛЕЙ В КОНТЕЙНЕР
 echo "----------------------------------------"
 
 # Найдем контейнер с ML-сервисом
-ML_CONTAINER=$(docker ps --format "{{.Names}}" | grep -E "(ml-service|forecast-api|moysklad-service)" | head -1)
+ML_CONTAINER=$(docker ps --format "{{.Names}}" | grep -E "(forecast-api|moysklad-service)" | head -1)
 
 if [ ! -z "$ML_CONTAINER" ]; then
     echo "   Проверка в контейнере: $ML_CONTAINER"
