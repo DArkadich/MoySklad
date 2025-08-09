@@ -130,36 +130,33 @@ def load_ml_models():
             # Загружаем модели из универсального файла
             if isinstance(model_data, dict):
                 logger.info(f"Ключи в данных: {list(model_data.keys())}")
-                
+
                 # Проверяем структуру models
-                if 'models' in model_data:
+                if 'models' in model_data and isinstance(model_data['models'], dict):
                     models = model_data['models']
                     logger.info(f"Найдено моделей в 'models': {len(models)}")
-                    
-                    for model_name, model_obj in models.items():
+
+                    # Ожидаем, что ключ = product_code, значение = модель
+                    for product_code, model_obj in models.items():
                         if hasattr(model_obj, 'predict'):
-                            # Используем model_name как product_code
-                            # Получаем реальный product_code из запроса или используем ID товара
-product_code = request.product_code if hasattr(request, 'product_code') else product_id
-                            ml_models[product_code] = model_obj
-                            logger.info(f"Загружена модель {model_name} для товара {product_code}")
-                
-                # Проверяем структуру results для метаданных
-                if 'results' in model_data:
+                            ml_models[str(product_code)] = model_obj
+                            logger.info(f"Загружена модель для товара {product_code}")
+
+                # Проверяем структуру results для метаданных/скейлеров
+                if 'results' in model_data and isinstance(model_data['results'], dict):
                     results = model_data['results']
-                    logger.info(f"Найдено результатов: {len(results) if isinstance(results, dict) else 'не dict'}")
-                    
-                    if isinstance(results, dict):
-                        for model_name, result_info in results.items():
-                            if isinstance(result_info, dict):
-                                # Используем реальный product_code
-product_code = request.product_code if hasattr(request, 'product_code') else product_id
-                                if product_code in ml_models:
-                                    if 'metadata' in result_info:
-                                        model_metadata[product_code] = result_info['metadata']
-                                    if 'scaler' in result_info:
-                                        model_scalers[product_code] = result_info['scaler']
-                                    logger.info(f"Добавлены метаданные для модели {model_name}")
+                    logger.info(f"Найдено результатов: {len(results)}")
+
+                    for product_code, result_info in results.items():
+                        if not isinstance(result_info, dict):
+                            continue
+                        code = str(product_code)
+                        if code in ml_models:
+                            if 'metadata' in result_info:
+                                model_metadata[code] = result_info['metadata']
+                            if 'scaler' in result_info:
+                                model_scalers[code] = result_info['scaler']
+                            logger.info(f"Добавлены метаданные/скейлер для товара {code}")
                 
                 # Проверяем features
                 if 'features' in model_data:
