@@ -198,51 +198,53 @@ class MLModelTrainer:
         os.makedirs(self.models_dir, exist_ok=True)
     
     def prepare_features(self, sales_data: List[Dict], stock_data: List[Dict]) -> pd.DataFrame:
-        """Подготовка признаков для обучения"""
-        if not sales_data:
+        """Подготовка признаков: продажи вычисляются как убывание остатков (stock delta)."""
+        # Формируем DataFrame остатков
+        if not stock_data:
             return pd.DataFrame()
-        
-        # Создаем DataFrame из данных о продажах
-        df = pd.DataFrame(sales_data)
-        df['date'] = pd.to_datetime(df['date'])
-        df = df.set_index('date').sort_index()
-        
-        # Группируем по дням
-        daily_sales = df.groupby(df.index.date).agg({
-            'quantity': 'sum',
-            'price': 'mean',
-            'sum': 'sum'
-        }).reset_index()
-        daily_sales['date'] = pd.to_datetime(daily_sales['date'])
-        daily_sales = daily_sales.set_index('date')
-        
-        # Добавляем временные признаки
-        daily_sales['year'] = daily_sales.index.year
-        daily_sales['month'] = daily_sales.index.month
-        daily_sales['day'] = daily_sales.index.day
-        daily_sales['day_of_year'] = daily_sales.index.dayofyear
-        daily_sales['day_of_week'] = daily_sales.index.dayofweek
-        daily_sales['is_month_start'] = daily_sales.index.day == 1
-        daily_sales['is_quarter_start'] = (daily_sales.index.day == 1) & (daily_sales.index.month.isin([1, 4, 7, 10]))
-        daily_sales['is_weekend'] = daily_sales.index.dayofweek >= 5
-        
-        # Сезонные признаки
-        daily_sales['is_holiday_season'] = daily_sales.index.month.isin([12, 1, 2])
-        daily_sales['is_summer_season'] = daily_sales.index.month.isin([6, 7, 8])
-        
-        # Лаговые признаки
-        daily_sales['quantity_lag_1'] = daily_sales['quantity'].shift(1)
-        daily_sales['quantity_lag_7'] = daily_sales['quantity'].shift(7)
-        daily_sales['quantity_lag_30'] = daily_sales['quantity'].shift(30)
-        
-        # Скользящие средние
-        daily_sales['quantity_ma_7'] = daily_sales['quantity'].rolling(7).mean()
-        daily_sales['quantity_ma_30'] = daily_sales['quantity'].rolling(30).mean()
-        
-        # Удаляем NaN значения
-        daily_sales = daily_sales.dropna()
-        
-        return daily_sales
+
+        sdf = pd.DataFrame(stock_data)
+        if sdf.empty:
+            return pd.DataFrame()
+        sdf['date'] = pd.to_datetime(sdf['date'])
+        sdf = sdf.sort_values('date').reset_index(drop=True)
+
+        # Нормализуем столбцы
+        for col in ['quantity', 'reserve', 'inTransit']:
+            if col not in sdf.columns:
+                sdf[col] = 0
+
+        # Вычисляем дневные продажи как убывание остатков (без учета пополнений)
+        sdf['prev_stock'] = sdf['quantity'].shift(1).fillna(sdf['quantity'])
+        raw_delta = sdf['prev_stock'] - sdf['quantity']
+        sdf['daily_sales'] = raw_delta.clip(lower=0)
+
+        # Подготовка итогового DataFrame с признаками
+        sdf['year'] = sdf['date'].dt.year
+        sdf['month'] = sdf['date'].dt.month
+        sdf['day'] = sdf['date'].dt.day
+        sdf['day_of_year'] = sdf['date'].dt.dayofyear
+        sdf['day_of_week'] = sdf['date'].dt.dayofweek
+        sdf['is_month_start'] = sdf['day'] == 1
+        sdf['is_quarter_start'] = (sdf['day'] == 1) & (sdf['month'].isin([1, 4, 7, 10]))
+        sdf['is_weekend'] = sdf['day_of_week'] >= 5
+        sdf['is_holiday_season'] = sdf['month'].isin([12, 1, 2])
+        sdf['is_summer_season'] = sdf['month'].isin([6, 7, 8])
+
+        # Лаги и скользящие средние
+        sdf['stock_lag_1'] = sdf['quantity'].shift(1).fillna(sdf['quantity'])
+        sdf['sales_lag_1'] = sdf['daily_sales'].shift(1).fillna(0)
+        sdf['sales_lag_7'] = sdf['daily_sales'].shift(7).fillna(0)
+        sdf['sales_lag_30'] = sdf['daily_sales'].shift(30).fillna(0)
+        sdf['sales_ma_7'] = sdf['daily_sales'].rolling(7, min_periods=1).mean()
+        sdf['stock_ma_7'] = sdf['quantity'].rolling(7, min_periods=1).mean()
+
+        # Чистим от NaN (после lag/rolling останутся первые значения, но мы их уже заполнили)
+        sdf = sdf.fillna(0)
+
+        # Унификация набора колонок
+        feature_df = sdf.rename(columns={'quantity': 'stock'})
+        return feature_df
     
     def train_models(self, product_id: str, features_df: pd.DataFrame) -> Dict:
         """Обучение моделей"""
@@ -251,9 +253,9 @@ class MLModelTrainer:
             return {}
         
         # Подготовка данных
-        feature_columns = [col for col in features_df.columns if col not in ['quantity', 'price', 'sum']]
+        feature_columns = [col for col in features_df.columns if col not in ['daily_sales', 'date']]
         X = features_df[feature_columns].values
-        y = features_df['quantity'].values
+        y = features_df['daily_sales'].values
         
         # Разделение на обучающую и тестовую выборки
         split_idx = int(len(X) * 0.8)
@@ -295,6 +297,45 @@ class MLModelTrainer:
         logger.info(f"  Random Forest: {rf_score:.4f}")
         
         return models
+
+    def build_universal_models_file(self) -> int:
+        """Собирает единый файл /app/data/universal_forecast_models.pkl из сохраненных real_models."""
+        models_root = self.models_dir
+        universal = {'models': {}, 'results': {}, 'features': [], 'training_date': datetime.now().isoformat(), 'model_type': 'real_data'}
+        try:
+            for name in os.listdir(models_root):
+                if not name.endswith('_metadata.json'):
+                    continue
+                meta_path = os.path.join(models_root, name)
+                with open(meta_path, 'r') as f:
+                    meta = json.load(f)
+                pid = meta.get('product_id')
+                results = meta.get('results', {})
+                models = meta.get('models', {})
+                if not pid or not results or not models:
+                    continue
+                # выбираем модель с лучшей accuracy
+                best = max(results.keys(), key=lambda k: results[k].get('accuracy', 0))
+                model_path = models.get(best)
+                if not model_path or not os.path.exists(model_path):
+                    continue
+                with open(model_path, 'rb') as f:
+                    model_obj = pickle.load(f)
+                # пытаемся загрузить scaler рядом
+                scaler_path = model_path.replace('.pkl', '_scaler.pkl')
+                scaler_obj = None
+                if os.path.exists(scaler_path):
+                    with open(scaler_path, 'rb') as f:
+                        scaler_obj = pickle.load(f)
+                universal['models'][pid] = model_obj
+                universal['results'][pid] = {'metadata': {'chosen_model': best, **results[best]}, 'scaler': scaler_obj}
+            out_path = '/app/data/universal_forecast_models.pkl'
+            with open(out_path, 'wb') as f:
+                pickle.dump(universal, f)
+            return len(universal['models'])
+        except Exception as e:
+            logger.error(f"Ошибка сборки универсального файла моделей: {e}")
+            return 0
     
     def save_models(self, product_id: str, models: Dict):
         """Сохранение моделей"""
@@ -366,18 +407,11 @@ async def main():
         logger.info(f"   ID: {product_id}, Код: {product_code}")
         
         try:
-            # Получение данных о продажах
-            sales_data = await data_collector.get_sales_data(product_id, days_back=90)
-            
-            if not sales_data:
-                logger.warning(f"⚠️ Нет данных о продажах для товара {product_name}")
-                continue
-            
             # Получение данных об остатках
-            stock_data = await data_collector.get_stock_data(product_id, days_back=30)
-            
-            # Подготовка признаков
-            features_df = model_trainer.prepare_features(sales_data, stock_data)
+            stock_data = await data_collector.get_stock_data(product_id, days_back=120)
+
+            # Подготовка признаков (продажи = убывание остатков)
+            features_df = model_trainer.prepare_features([], stock_data)
             
             if features_df.empty:
                 logger.warning(f"⚠️ Не удалось подготовить признаки для товара {product_name}")
@@ -406,7 +440,9 @@ async def main():
     logger.info(f"🎉 Обучение завершено! Успешно обучено моделей: {successful_models}/{len(test_products)}")
     
     if successful_models > 0:
-        logger.info("✅ Система готова к работе с реальными моделями!")
+        # Сборка универсального файла моделей
+        built = model_trainer.build_universal_models_file()
+        logger.info(f"✅ Система готова. Универсальный файл моделей собран, моделей: {built}")
     else:
         logger.warning("⚠️ Не удалось обучить ни одной модели. Проверьте API токен и лимиты.")
 
