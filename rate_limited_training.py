@@ -128,18 +128,31 @@ class RateLimitedMoySkladCollector:
         for demand in data.get("rows", []):
             # Получаем позиции документа с задержкой
             positions_data = await self._make_request(
-                "GET", 
-                f"{self.api_url}/entity/demand/{demand['id']}/positions"
+                "GET",
+                f"{self.api_url}/entity/demand/{demand['id']}/positions",
+                params={"expand": "assortment"}
             )
             
             if positions_data:
                 for position in positions_data.get("rows", []):
-                    if position["assortment"]["id"] == product_id:
+                    assortment = position.get("assortment", {})
+                    assortment_id = None
+
+                    if isinstance(assortment, dict):
+                        # Прямой id, если expand сработал
+                        assortment_id = assortment.get("id")
+                        if not assortment_id:
+                            # Пробуем извлечь из meta.href
+                            href = (assortment.get("meta", {}) or {}).get("href", "")
+                            if href:
+                                assortment_id = href.rstrip("/").split("/")[-1]
+
+                    if assortment_id == product_id:
                         sales_data.append({
-                            "date": demand["moment"],
-                            "quantity": position["quantity"],
-                            "price": position["price"] / 100,
-                            "sum": position["sum"] / 100
+                            "date": demand.get("moment"),
+                            "quantity": position.get("quantity", 0),
+                            "price": (position.get("price", 0) or 0) / 100,
+                            "sum": (position.get("sum", 0) or 0) / 100
                         })
         
         logger.info(f"✅ Получено {len(sales_data)} записей продаж для товара {product_id}")
