@@ -69,8 +69,8 @@ class RateLimitedMoySkladCollector:
                 
                 if response.status_code == 200:
                     return response.json()
-                elif response.status_code == 429:  # Too Many Requests
-                    logger.warning("⚠️ Превышен лимит запросов. Ожидание 60 секунд...")
+                elif response.status_code in (429, 412):  # Rate-limit / anti-bot
+                    logger.warning(f"⚠️ Ограничение API ({response.status_code}). Ожидание 60 секунд...")
                     await asyncio.sleep(60)
                     return None
                 elif response.status_code == 403:  # Forbidden
@@ -85,18 +85,28 @@ class RateLimitedMoySkladCollector:
             return None
     
     async def get_all_products(self) -> List[Dict]:
-        """Получение всех товаров из MoySklad с ограничениями"""
-        logger.info("📦 Получение списка товаров из MoySklad...")
-        
-        data = await self._make_request("GET", f"{self.api_url}/entity/product")
-        
-        if data:
-            products = data.get("rows", [])
-            logger.info(f"✅ Получено {len(products)} товаров из MoySklad")
-            return products
-        else:
-            logger.error("❌ Не удалось получить товары из MoySklad")
-            return []
+        """Получение ассортимента (с кодами) из MoySklad с ограничениями"""
+        logger.info("📦 Получение ассортимента из MoySklad...")
+        all_rows: List[Dict] = []
+        offset = 0
+        page_size = 100
+        while True:
+            data = await self._make_request(
+                "GET",
+                f"{self.api_url}/entity/assortment",
+                params={"limit": page_size, "offset": offset},
+            )
+            if not data:
+                break
+            rows = data.get("rows", [])
+            if not rows:
+                break
+            all_rows.extend(rows)
+            if len(rows) < page_size:
+                break
+            offset += page_size
+        logger.info(f"✅ Получено {len(all_rows)} позиций ассортимента из MoySklad")
+        return all_rows
     
     async def get_sales_data(self, product_id: str, days_back: int = 90) -> List[Dict]:
         """Получение данных о продажах товара с ограничениями"""
@@ -158,36 +168,45 @@ class RateLimitedMoySkladCollector:
         logger.info(f"✅ Получено {len(sales_data)} записей продаж для товара {product_id}")
         return sales_data
     
-    async def get_stock_data(self, product_id: str, days_back: int = 30) -> List[Dict]:
-        """Получение данных об остатках товара с ограничениями"""
-        logger.info(f"📦 Получение данных об остатках для товара {product_id}...")
-        
-        end_date = datetime.now()
+    async def get_stock_data(self, product_code: str, days_back: int = 120) -> List[Dict]:
+        """Получение данных об остатках товара: day-by-day по report/stock/all с фильтром по коду."""
+        logger.info(f"📦 Получение данных об остатках для кода {product_code}...")
+
+        end_date = datetime.now().date()
         start_date = end_date - timedelta(days=days_back)
-        
-        data = await self._make_request(
-            "GET", 
-            f"{self.api_url}/report/stock/all",
-            params={
-                "filter": f"assortmentId={product_id}",
-                "momentFrom": start_date.isoformat(),
-                "momentTo": end_date.isoformat()
+
+        stock_data: List[Dict] = []
+        current = start_date
+        while current <= end_date:
+            params = {
+                "moment": f"{current.isoformat()}T00:00:00",
+                "limit": 1000,
+                "filter": f"code={product_code}" if product_code else None,
             }
-        )
-        
-        if not data:
-            return []
-        
-        stock_data = []
-        for row in data.get("rows", []):
-            stock_data.append({
-                "date": row.get("moment", datetime.now().isoformat()),
-                "quantity": row.get("quantity", 0),
-                "reserve": row.get("reserve", 0),
-                "inTransit": row.get("inTransit", 0)
-            })
-        
-        logger.info(f"✅ Получено {len(stock_data)} записей остатков для товара {product_id}")
+            # Убираем None-поля из params
+            params = {k: v for k, v in params.items() if v is not None}
+
+            data = await self._make_request(
+                "GET",
+                f"{self.api_url}/report/stock/all",
+                params=params,
+            )
+            if data:
+                for row in data.get("rows", []):
+                    # Дополнительная проверка по коду, если поле присутствует
+                    if product_code and row.get("code") and row.get("code") != product_code:
+                        continue
+                    stock_data.append({
+                        "date": current.isoformat(),
+                        "quantity": row.get("quantity", 0),
+                        "reserve": row.get("reserve", 0),
+                        "inTransit": row.get("inTransit", 0),
+                    })
+            # Пауза между днями для снижения нагрузки
+            await asyncio.sleep(0.2)
+            current += timedelta(days=1)
+
+        logger.info(f"✅ Получено {len(stock_data)} дневных записей остатков для кода {product_code}")
         return stock_data
 
 class MLModelTrainer:
