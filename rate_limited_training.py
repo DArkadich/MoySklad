@@ -14,7 +14,6 @@ import logging
 import time
 import random
 from collections import deque
-import random
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
@@ -184,44 +183,54 @@ class RateLimitedMoySkladCollector:
         logger.info(f"✅ Получено {len(sales_data)} записей продаж для товара {product_id}")
         return sales_data
     
-    async def get_stock_data(self, product_code: str, days_back: int = 120) -> List[Dict]:
-        """Получение данных об остатках товара: day-by-day по report/stock/all с фильтром по коду."""
-        logger.info(f"📦 Получение данных об остатках для кода {product_code}...")
+    async def get_stock_data(self, product_code: str, start_date: datetime.date, end_date: datetime.date,
+                             chunk_days: int = None) -> List[Dict]:
+        """Получение данных об остатках товара: day-by-day по report/stock/all, с чанками и паузами.
+        Чанки нужны для контролируемых пауз, чтобы не ловить антибот при длинных сериях запросов.
+        """
+        logger.info(f"📦 Остатки для {product_code}: {start_date} .. {end_date}")
 
-        end_date = datetime.now().date()
-        start_date = end_date - timedelta(days=days_back)
+        if chunk_days is None:
+            chunk_days = int(os.getenv('MSK_CHUNK_DAYS', '31'))
+        pause_after_chunk = float(os.getenv('MSK_CHUNK_PAUSE_SEC', '5'))
 
         stock_data: List[Dict] = []
         current = start_date
         while current <= end_date:
-            params = {
-                "moment": f"{current.isoformat()}T00:00:00",
-                "limit": 1000,
-            }
+            chunk_end = min(current + timedelta(days=chunk_days - 1), end_date)
+            day = current
+            while day <= chunk_end:
+                params = {
+                    "moment": f"{day.isoformat()}T00:00:00",
+                    "limit": 1000,
+                }
+                data = await self._make_request(
+                    "GET",
+                    f"{self.api_url}/report/stock/all",
+                    params=params,
+                )
+                if data:
+                    for row in data.get("rows", []):
+                        row_code = row.get("code")
+                        if product_code and row_code and row_code != product_code:
+                            continue
+                        if product_code and not row_code:
+                            continue
+                        stock_data.append({
+                            "date": day.isoformat(),
+                            "quantity": row.get("quantity", 0),
+                            "reserve": row.get("reserve", 0),
+                            "inTransit": row.get("inTransit", 0),
+                            "product_code": row_code or product_code,
+                        })
+                # Лёгкая пауза между днями (дополнительно к rate-limit)
+                await asyncio.sleep(0.05)
+                day += timedelta(days=1)
 
-            data = await self._make_request(
-                "GET",
-                f"{self.api_url}/report/stock/all",
-                params=params,
-            )
-            if data:
-                for row in data.get("rows", []):
-                    row_code = row.get("code")
-                    if product_code and row_code and row_code != product_code:
-                        continue
-                    if product_code and not row_code:
-                        # Если у строки нет кода, пропускаем (мы работаем только с товарами с кодом)
-                        continue
-                    stock_data.append({
-                        "date": current.isoformat(),
-                        "quantity": row.get("quantity", 0),
-                        "reserve": row.get("reserve", 0),
-                        "inTransit": row.get("inTransit", 0),
-                        "product_code": row_code or product_code,
-                    })
-            # Пауза между днями для снижения нагрузки
-            await asyncio.sleep(0.2)
-            current += timedelta(days=1)
+            # Пауза после чанка
+            logger.info(f"⏸ Пауза {pause_after_chunk:.1f} c после чанка {current}..{chunk_end}")
+            await asyncio.sleep(pause_after_chunk)
+            current = chunk_end + timedelta(days=1)
 
         logger.info(f"✅ Получено {len(stock_data)} дневных записей остатков для кода {product_code}")
         return stock_data
@@ -416,7 +425,7 @@ async def main():
     data_collector = RateLimitedMoySkladCollector()
     model_trainer = MLModelTrainer()
     
-    # Получение всех товаров
+    # Получение всего ассортимента
     products = await data_collector.get_all_products()
     
     if not products:
@@ -427,53 +436,54 @@ async def main():
         logger.info("   - Нет прав доступа")
         return
     
-    logger.info(f"📦 Найдено {len(products)} товаров для обучения")
-    
-    # Ограничиваем количество товаров для тестирования
-    test_products = products[:3]  # Уменьшаем до 3 товаров
-    
+    # Фильтруем только позиции с непустым code
+    products_with_code = [p for p in products if (p.get('code') or '').strip()]
+    logger.info(f"📦 Товаров с кодом для обучения: {len(products_with_code)} из {len(products)}")
+
+    # Диапазон по умолчанию ~5 лет, можно переопределить MSK_HISTORY_DAYS
+    end_date = datetime.now().date()
+    history_days = int(os.getenv('MSK_HISTORY_DAYS', '1825'))
+    start_date = end_date - timedelta(days=history_days)
+
     successful_models = 0
-    
-    for i, product in enumerate(test_products, 1):
-        product_id = product['id']
+
+    for i, product in enumerate(products_with_code, 1):
+        product_code = (product.get('code') or '').strip()
         product_name = product.get('name', 'Неизвестный товар')
-        product_code = product.get('code', '')
-        
-        logger.info(f"📦 [{i}/{len(test_products)}] Обрабатываем товар: {product_name}")
-        logger.info(f"   ID: {product_id}, Код: {product_code}")
-        
+
+        logger.info(f"📦 [{i}/{len(products_with_code)}] Обрабатываем товар: {product_name} (code={product_code})")
+
         try:
-            # Получение данных об остатках
-            stock_data = await data_collector.get_stock_data(product_id, days_back=120)
+            # Сбор остатков за весь период чанками
+            stock_data = await data_collector.get_stock_data(product_code, start_date, end_date)
 
             # Подготовка признаков (продажи = убывание остатков)
             features_df = model_trainer.prepare_features([], stock_data)
-            
+
             if features_df.empty:
-                logger.warning(f"⚠️ Не удалось подготовить признаки для товара {product_name}")
+                logger.warning(f"⚠️ Недостаточно данных для товара {product_name} ({product_code})")
                 continue
-            
+
             # Обучение моделей
-            models = model_trainer.train_models(product_id, features_df)
-            
+            models = model_trainer.train_models(product_code, features_df)
+
             if models:
                 # Сохранение моделей
-                model_trainer.save_models(product_id, models)
-                logger.info(f"✅ Модели для товара {product_name} успешно обучены и сохранены")
+                model_trainer.save_models(product_code, models)
+                logger.info(f"✅ Модели для {product_name} ({product_code}) обучены и сохранены")
                 successful_models += 1
             else:
-                logger.warning(f"⚠️ Не удалось обучить модели для товара {product_name}")
-        
+                logger.warning(f"⚠️ Не удалось обучить модели для {product_name} ({product_code})")
+
         except Exception as e:
-            logger.error(f"❌ Ошибка обработки товара {product_name}: {e}")
+            logger.error(f"❌ Ошибка обработки {product_name} ({product_code}): {e}")
             continue
-        
-        # Пауза между товарами
-        if i < len(test_products):
-            logger.info("⏳ Пауза между товарами для соблюдения лимитов API...")
-            await asyncio.sleep(5)
-    
-    logger.info(f"🎉 Обучение завершено! Успешно обучено моделей: {successful_models}/{len(test_products)}")
+
+        # Пауза между товарами (снижаем вероятность антибота)
+        if i < len(products_with_code):
+            await asyncio.sleep(2)
+
+    logger.info(f"🎉 Обучение завершено! Успешно обучено моделей: {successful_models}/{len(products_with_code)}")
     
     if successful_models > 0:
         # Сборка универсального файла моделей
