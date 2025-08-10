@@ -13,6 +13,8 @@ import json
 import logging
 import time
 import random
+from collections import deque
+import random
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
@@ -43,21 +45,35 @@ class RateLimitedMoySkladCollector:
         }
         
         # Ограничения API
-        self.requests_per_minute = 30  # Лимит запросов в минуту
-        self.delay_between_requests = 2.0  # Задержка между запросами в секундах
-        self.last_request_time = 0
+        # Настройка лимитов: целимся ниже 200 req/min для запаса
+        self.requests_per_minute = int(os.getenv('MSK_REQ_PER_MIN', '180'))
+        self.min_delay_between_requests = float(os.getenv('MSK_MIN_DELAY_SEC', '0.30'))
+        self.last_request_time = 0.0
+        self.request_timestamps = deque()  # моменты времени последних запросов (секунды)
         
     async def _rate_limit(self):
-        """Ограничение частоты запросов"""
-        current_time = time.time()
-        time_since_last = current_time - self.last_request_time
-        
-        if time_since_last < self.delay_between_requests:
-            sleep_time = self.delay_between_requests - time_since_last
-            logger.info(f"⏳ Ожидание {sleep_time:.1f} секунд для соблюдения лимитов API...")
+        """Скользящее окно: не более N запросов за последние 60 секунд + минимальная задержка с джиттером."""
+        now = time.time()
+        # Минимальная задержка между запросами
+        since_last = now - self.last_request_time
+        if since_last < self.min_delay_between_requests:
+            sleep_time = self.min_delay_between_requests - since_last + random.uniform(0.02, 0.12)
             await asyncio.sleep(sleep_time)
-        
+            now = time.time()
+
+        # Чистим окно старше 60 секунд
+        while self.request_timestamps and now - self.request_timestamps[0] > 60.0:
+            self.request_timestamps.popleft()
+
+        # Если достигли лимита, ждём до освобождения окна
+        if len(self.request_timestamps) >= self.requests_per_minute:
+            sleep_needed = 60.0 - (now - self.request_timestamps[0]) + random.uniform(0.05, 0.15)
+            logger.info(f"⏳ Достигнут лимит {self.requests_per_minute}/мин. Ожидание {sleep_needed:.1f} c...")
+            await asyncio.sleep(max(0.0, sleep_needed))
+
+        # Фиксируем текущий запрос
         self.last_request_time = time.time()
+        self.request_timestamps.append(self.last_request_time)
     
     async def _make_request(self, method: str, url: str, **kwargs) -> Optional[Dict]:
         """Выполнение запроса с ограничениями"""
@@ -181,10 +197,7 @@ class RateLimitedMoySkladCollector:
             params = {
                 "moment": f"{current.isoformat()}T00:00:00",
                 "limit": 1000,
-                "filter": f"code={product_code}" if product_code else None,
             }
-            # Убираем None-поля из params
-            params = {k: v for k, v in params.items() if v is not None}
 
             data = await self._make_request(
                 "GET",
@@ -193,14 +206,18 @@ class RateLimitedMoySkladCollector:
             )
             if data:
                 for row in data.get("rows", []):
-                    # Дополнительная проверка по коду, если поле присутствует
-                    if product_code and row.get("code") and row.get("code") != product_code:
+                    row_code = row.get("code")
+                    if product_code and row_code and row_code != product_code:
+                        continue
+                    if product_code and not row_code:
+                        # Если у строки нет кода, пропускаем (мы работаем только с товарами с кодом)
                         continue
                     stock_data.append({
                         "date": current.isoformat(),
                         "quantity": row.get("quantity", 0),
                         "reserve": row.get("reserve", 0),
                         "inTransit": row.get("inTransit", 0),
+                        "product_code": row_code or product_code,
                     })
             # Пауза между днями для снижения нагрузки
             await asyncio.sleep(0.2)
